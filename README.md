@@ -1,4 +1,4 @@
-![git-jump CLI logo](https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/readme-banner.png)
+![git-jump CLI logo](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/readme-banner.png)
 
 # Git Branches Helper
 
@@ -11,19 +11,19 @@
 Give it a ⭐️ if you like it. This really helps.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
+  <img src="https://raw.githubusercontent.com/pkitazos/git-jump/main/img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
 </p>
 
 ## Install
 
 ```shell
-npm install -g git-jump
+npm install -g @pkitazos/git-jump
 ```
-or using Homebrew
+<!--or using Homebrew
 ```shell
-brew tap mykolaharmash/git-jump
+brew tap pkitazos/git-jump
 brew install git-jump
-```
+```-->
 
 ## Usage
 
@@ -92,13 +92,13 @@ It might be disabled by default in your terminal, here is how to make it work in
 
 In Preferences go to `Profiles`, select your profile and go to `Keys`. At the bottom set `Left Option (⌥) Key` to `Esc+`.
 
-![iTerm 2 app preferences window](https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/iTerm-Option-key@2x.png)
+![iTerm 2 app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/iTerm-Option-key@2x.png)
 
 ### macOS Terminal
 
 In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enable `Use Option as Meta key` checkbox.
 
-![macOS Terminal app preferences window](https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/Terminal-Option-key@2x.png)
+![macOS Terminal app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/Terminal-Option-key@2x.png)
 
 ### Hyper
 

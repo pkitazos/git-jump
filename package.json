@@ -1,12 +1,15 @@
 {
-  "name": "git-jump",
-  "version": "0.3.1",
-  "description": "Git Branches Helper",
+  "name": "@pkitazos/git-jump",
+  "version": "0.3.2",
+  "description": "Git Branches Helper (A modernised fork of the original project)",
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "pnpm run build",
     "release": "cat ./how-to-release.md"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bin": {
     "git-jump": "./exec/git-jump"
@@ -22,16 +25,21 @@
     "help.txt"
   ],
   "author": {
-    "name": "Mykola Harmash",
-    "email": "mykola.harmash@gmail.com",
-    "url": "https://stse.io"
+    "name": "Petros Kitazos"
   },
+  "contributors": [
+    {
+      "name": "Mykola Harmash",
+      "email": "mykola.harmash@gmail.com",
+      "url": "https://stse.io"
+    }
+  ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:mykolaharmash/git-jump.git"
+    "url": "git@github.com:pkitazos/git-jump.git"
   },
-  "homepage": "https://github.com/mykolaharmash/git-jump",
-  "bugs": "https://github.com/mykolaharmash/git-jump/issues",
+  "homepage": "https://github.com/pkitazos/git-jump",
+  "bugs": "https://github.com/pkitazos/git-jump/issues",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^14.0.23",
@@ -39,8 +47,9 @@
   },
   "engines": {
     "node": ">=12.12.0",
-    "npm": ">=6.14.5"
+    "pnpm": ">=8.0.0"
   },
+  "packageManager": "pnpm@8.15.0",
   "keywords": [
     "git",
     "cli",
