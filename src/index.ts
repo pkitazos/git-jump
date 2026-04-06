@@ -40,6 +40,12 @@ function isSubCommand(args: string[]): boolean {
   return isDashDashSubCommand || isMultiArgumentSubCommand;
 }
 
+/**
+ * A switchboard function that routes execution to specific sub-command logic.
+ * It bypasses the interactive UI to perform direct operations.
+ * @param name - The primary sub-command name (e.g., "--list", "new", "rename").
+ * @param args - Any subsequent arguments required by the specific sub-command.
+ */
 function executeSubCommand(name: string, args: string[]) {
   switch (name) {
     case "--list":
@@ -182,22 +188,42 @@ function deleteSubCommand(args: string[]): void {
 
 // Bare
 
+/**
+ * Represents a single Git branch and its usage history.
+ */
 interface BranchData {
   name: string;
   lastSwitch: number;
 }
 
+/**
+ * Represents the current state of the working directory's HEAD.
+ * Tracks whether the HEAD is detached, its commit hash, and the active branch name.
+ */
 interface CurrentHEAD {
   detached: boolean;
   sha: string | null;
   branchName: string | null;
 }
 
+/**
+ * A dictionary mapping branch names to their respective BranchData.
+ * Used for serialising and deserialising the branch jump history.
+ */
+type BranchDataCollection = { [key: string]: BranchData };
+
+/**
+ * Differentiates between the current HEAD and standard branches in the UI list.
+ */
 enum ListItemType {
   Head,
   Branch,
 }
 
+/**
+ * A wrapper for items displayed in the terminal UI list.
+ * Combines the underlying Git data with a search match score for filtering and sorting.
+ */
 interface ListItem {
   type: ListItemType;
   content: CurrentHEAD | BranchData;
@@ -211,11 +237,18 @@ interface PackageInfo {
   };
 }
 
+/**
+ * Defines the active view or screen of the application.
+ */
 enum Scene {
   List,
   Message,
 }
 
+/**
+ * The central state object for the entire interactive terminal application.
+ * Tracks terminal dimensions, cursor positions, loaded Git data, UI list state, and package information.
+ */
 interface State {
   rows: number;
   columns: number;
@@ -235,6 +268,11 @@ interface State {
   packageInfo: PackageInfo | null;
 }
 
+/**
+ * The initial application state instantiated on startup.
+ * It immediately captures the current terminal dimensions and defaults to the List scene.
+ * It assumes an interactive terminal environment until proven otherwise.
+ */
 const state: State = {
   rows: process.stdout.rows,
   columns: process.stdout.columns,
@@ -282,9 +320,32 @@ function red(s: string): string {
   return `\x1b[38;5;1m${s}\x1b[39m`;
 }
 
+/**
+ * Defines the visible window of list items to render.
+ * Used to calculate which slice of the total list should be displayed based on terminal height.
+ */
 interface LinesWindow {
   topIndex: number;
   bottomIndex: number;
+}
+
+/**
+ * Categorises the different columns displayed in the UI layout.
+ */
+enum LayoutColumnType {
+  Index,
+  BranchName,
+  LastUsed,
+  MoreIndicator,
+}
+
+/**
+ * Defines the structural layout of a single column in the terminal UI,
+ * including its type and calculated width.
+ */
+interface LayoutColumn {
+  type: LayoutColumnType;
+  width: number;
 }
 
 function calculateLinesWindow(
@@ -301,18 +362,6 @@ function calculateLinesWindow(
   const bottomIndex = topIndex + (windowSize - 1);
 
   return { topIndex, bottomIndex };
-}
-
-enum LayoutColumnType {
-  Index,
-  BranchName,
-  LastUsed,
-  MoreIndicator,
-}
-
-interface LayoutColumn {
-  type: LayoutColumnType;
-  width: number;
 }
 
 function calculateLayout(state: State): LayoutColumn[] {
@@ -599,6 +648,10 @@ interface RenderState {
   cursorY: number;
 }
 
+/**
+ * The initial state for the rendering engine.
+ * Starts tracking the vertical cursor position from the first line to ensure clean terminal redraws.
+ */
 const renderState: RenderState = {
   cursorY: 1,
 };
@@ -637,6 +690,10 @@ function cursorTo(x: number, y: number) {
   renderState.cursorY = y;
 }
 
+/**
+ * Hexadecimal buffer sequences representing specific special keyboard inputs.
+ * These are used to interpret raw keystrokes from the terminal for navigation and control.
+ */
 const CTRL_C = Buffer.from("03", "hex");
 const UP = Buffer.from("1b5b41", "hex");
 const DOWN = Buffer.from("1b5b42", "hex");
@@ -839,9 +896,15 @@ function readRawGitBranches(): string[] {
   return stdout.split("\n").filter((branchName) => branchName !== "");
 }
 
-type BranchDataCollection = { [key: string]: BranchData };
-
+/**
+ * The name of the hidden directory created within the target Git repository
+ * to store jump-related metadata.
+ */
 const JUMP_FOLDER = ".jump";
+
+/**
+ * The relative path to the JSON file where branch usage history and timestamps are saved.
+ */
 const DATA_FILE_PATH = `${JUMP_FOLDER}/data.json`;
 
 function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
@@ -1170,6 +1233,11 @@ function handleStringKey(key: Buffer) {
   view(state);
 }
 
+/**
+ * Boots the interactive TUI.
+ * Renders the initial view, puts the terminal standard input into raw mode,
+ * and begins listening to and parsing a continuous stream of keyboard inputs.
+ */
 function bare() {
   view(state);
 
@@ -1192,8 +1260,12 @@ function bare() {
   });
 }
 
-// Jump to a branch
-
+/**
+ * Attempts an immediate branch switch based on a provided search string.
+ * First tries an exact git switch; if that fails, it generates a fuzzy-matched
+ * list of branches and automatically switches to the best match.
+ * * @param args - The search string or partial branch name provided by the user.
+ */
 function jumpTo(args: string[]) {
   const switchResult = gitSwitch(args);
 
@@ -1365,6 +1437,12 @@ function ensureNodeVersion() {
   }
 }
 
+/**
+ * The primary entry point for the application.
+ * Sets up global event listeners and ensures environment compatibility,
+ * initialises the application state, and routes execution based on CLI arguments.
+ * * @param args - The command-line arguments passed to the script (excluding node and script paths).
+ */
 function main(args: string[]) {
   process.on("uncaughtException", handleError);
   process.on("exit", handleExit);
