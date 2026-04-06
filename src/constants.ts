@@ -1,4 +1,15 @@
 /**
+ * The name of the hidden directory created within the target Git repository
+ * to store jump-related metadata.
+ */
+export const JUMP_FOLDER = ".jump";
+
+/**
+ * The relative path to the JSON file where branch usage history and timestamps are saved.
+ */
+export const DATA_FILE_PATH = `${JUMP_FOLDER}/data.json`;
+
+/**
  * Hexadecimal buffer sequences representing specific special keyboard inputs.
  * These are used to interpret raw keystrokes from the terminal for navigation and control.
  */

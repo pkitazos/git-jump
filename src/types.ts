@@ -78,7 +78,6 @@ export type State = {
   searchStringCursorPosition: number;
   currentHEAD: CurrentHEAD;
   list: ListItem[];
-  lineSelected: boolean;
   scene: Scene;
   message: string[];
   gitRepoFolder: string;
