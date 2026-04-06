@@ -101,7 +101,7 @@ function listSubCommand(): void {
 function newSubCommand(args: string[]): void {
   const { status, message } = gitSwitch(["--create", ...args]);
 
-  state.scene = Scene.Message;
+  state.scene = Scene.MESSAGE;
   state.message = message;
 
   if (status === 0) {
@@ -157,7 +157,7 @@ function renameSubCommand(args: string[]): void {
     args[1],
   ]);
 
-  state.scene = Scene.Message;
+  state.scene = Scene.MESSAGE;
   state.message = message;
 
   if (status === 0) {
@@ -174,7 +174,7 @@ function renameSubCommand(args: string[]): void {
 function deleteSubCommand(args: string[]): void {
   const { status, message } = gitCommand("branch", ["--delete", ...args]);
 
-  state.scene = Scene.Message;
+  state.scene = Scene.MESSAGE;
   state.message = message;
 
   if (status === 0) {
@@ -191,20 +191,18 @@ function deleteSubCommand(args: string[]): void {
 /**
  * Represents a single Git branch and its usage history.
  */
-interface BranchData {
+type BranchData = {
   name: string;
   lastSwitch: number;
-}
+};
 
 /**
  * Represents the current state of the working directory's HEAD.
  * Tracks whether the HEAD is detached, its commit hash, and the active branch name.
  */
-interface CurrentHEAD {
-  detached: boolean;
-  sha: string | null;
-  branchName: string | null;
-}
+type CurrentHEAD =
+  | { detached: true; sha: string; branchName: null }
+  | { detached: false; sha: null; branchName: string };
 
 /**
  * A dictionary mapping branch names to their respective BranchData.
@@ -215,41 +213,49 @@ type BranchDataCollection = { [key: string]: BranchData };
 /**
  * Differentiates between the current HEAD and standard branches in the UI list.
  */
-enum ListItemType {
-  Head,
-  Branch,
-}
+const ListItemType = {
+  HEAD: "head",
+  BRANCH: "branch",
+} as const;
 
 /**
  * A wrapper for items displayed in the terminal UI list.
  * Combines the underlying Git data with a search match score for filtering and sorting.
  */
-interface ListItem {
-  type: ListItemType;
-  content: CurrentHEAD | BranchData;
-  searchMatchScore: number;
-}
+type ListItem =
+  | {
+      type: typeof ListItemType.HEAD;
+      content: CurrentHEAD;
+      searchMatchScore: number;
+    }
+  | {
+      type: typeof ListItemType.BRANCH;
+      content: BranchData;
+      searchMatchScore: number;
+    };
 
-interface PackageInfo {
+type PackageInfo = {
   version: string;
   engines: {
     node: string;
   };
-}
+};
 
 /**
  * Defines the active view or screen of the application.
  */
-enum Scene {
-  List,
-  Message,
-}
+const Scene = {
+  LIST: "list",
+  MESSAGE: "message",
+} as const;
+
+type Scene = (typeof Scene)[keyof typeof Scene];
 
 /**
  * The central state object for the entire interactive terminal application.
  * Tracks terminal dimensions, cursor positions, loaded Git data, UI list state, and package information.
  */
-interface State {
+type State = {
   rows: number;
   columns: number;
   highlightedLineIndex: number;
@@ -262,11 +268,11 @@ interface State {
   lineSelected: boolean;
   scene: Scene;
   message: string[];
-  gitRepoFolder: string | null;
+  gitRepoFolder: string;
   isInteractive: boolean;
   latestPackageVersion: string | null;
   packageInfo: PackageInfo | null;
-}
+};
 
 /**
  * The initial application state instantiated on startup.
@@ -284,13 +290,13 @@ const state: State = {
   currentHEAD: {
     detached: false,
     sha: null,
-    branchName: null,
-  },
+    branchName: "",
+  } as CurrentHEAD,
   list: [],
   lineSelected: false,
-  scene: Scene.List,
+  scene: Scene.LIST,
   message: [],
-  gitRepoFolder: null,
+  gitRepoFolder: "",
   isInteractive: true,
   latestPackageVersion: null,
   packageInfo: null,
@@ -324,10 +330,10 @@ function red(s: string): string {
  * Defines the visible window of list items to render.
  * Used to calculate which slice of the total list should be displayed based on terminal height.
  */
-interface LinesWindow {
+type LinesWindow = {
   topIndex: number;
   bottomIndex: number;
-}
+};
 
 /**
  * Categorises the different columns displayed in the UI layout.
@@ -343,10 +349,10 @@ enum LayoutColumnType {
  * Defines the structural layout of a single column in the terminal UI,
  * including its type and calculated width.
  */
-interface LayoutColumn {
+type LayoutColumn = {
   type: LayoutColumnType;
   width: number;
-}
+};
 
 function calculateLinesWindow(
   linesCount: number,
@@ -435,7 +441,7 @@ function truncate(s: string, maxWidth: number): string {
 function getQuickSelectLines(list: ListItem[]): ListItem[] {
   return list
     .filter((line: ListItem) => {
-      return line.type !== ListItemType.Head;
+      return line.type !== ListItemType.HEAD;
     })
     .slice(0, 10);
 }
@@ -492,14 +498,14 @@ function viewListLines(state: State, layout: LayoutColumn[]): string[] {
 
   return state.list.map((line: ListItem) => {
     switch (line.type) {
-      case ListItemType.Head: {
-        return viewCurrentHEAD(line.content as CurrentHEAD, layout);
+      case ListItemType.HEAD: {
+        return viewCurrentHEAD(line.content, layout);
       }
 
-      case ListItemType.Branch: {
+      case ListItemType.BRANCH: {
         quickSelectIndex++;
 
-        return viewBranch(line.content as BranchData, quickSelectIndex, layout);
+        return viewBranch(line.content, quickSelectIndex, layout);
       }
     }
   });
@@ -583,12 +589,12 @@ function viewSearchLine(state: State): string {
  * The primary rendering function.
  * Depending on the active Scene (List or Message), it calculates the required
  * layout math, clears the necessary terminal space, and uses ANSI escape codes
- * to draw the updated interface to standard output.
+ * to draw the updated type to = standard output.
  * @param state - The current application state.
  */
 function view(state: State) {
   switch (state.scene) {
-    case Scene.List: {
+    case Scene.LIST: {
       if (!state.isInteractive) {
         // concat(['']) will add trailing newline
         render(viewNonInteractiveList(state).concat([""]));
@@ -612,7 +618,7 @@ function view(state: State) {
       break;
     }
 
-    case Scene.Message: {
+    case Scene.MESSAGE: {
       clear();
 
       const lineSpacer = "  ";
@@ -651,9 +657,9 @@ function view(state: State) {
  * not by application logic. They are part of a different,
  * more low-level sub-system.
  */
-interface RenderState {
+type RenderState = {
   cursorY: number;
-}
+};
 
 /**
  * The initial state for the rendering engine.
@@ -715,8 +721,8 @@ function log(s: any) {
 }
 
 const escapeCode = 0x1b;
-const UNICODE_C0_RANGE: [Number, Number] = [0x00, 0x1f];
-const UNICODE_C1_RANGE: [Number, Number] = [0x80, 0x9f];
+const UNICODE_C0_RANGE = { start: 0x00, end: 0x1f };
+const UNICODE_C1_RANGE = { start: 0x80, end: 0x9f };
 
 function isEscapeCode(data: Buffer): boolean {
   return data[0] === escapeCode;
@@ -730,8 +736,10 @@ function isC0C1ControlCode(data: Buffer): boolean {
 
   const code = data[0];
 
-  const inC0Range = code >= UNICODE_C0_RANGE[0] && code <= UNICODE_C0_RANGE[1];
-  const inC1Range = code >= UNICODE_C1_RANGE[0] && code <= UNICODE_C1_RANGE[1];
+  const inC0Range =
+    code >= UNICODE_C0_RANGE.start && code <= UNICODE_C0_RANGE.end;
+  const inC1Range =
+    code >= UNICODE_C1_RANGE.start && code <= UNICODE_C1_RANGE.end;
 
   return inC0Range || inC1Range;
 }
@@ -766,7 +774,7 @@ function sortedListLines(
 ): ListItem[] {
   if (criterion === ListSortCriterion.LastSwitch) {
     return list.slice().sort((a: ListItem, b: ListItem) => {
-      if (b.type === ListItemType.Head) {
+      if (b.type === ListItemType.HEAD) {
         return 1;
       }
 
@@ -794,7 +802,7 @@ function generateList(state: State) {
   let list: ListItem[] = [];
 
   list.push({
-    type: ListItemType.Head,
+    type: ListItemType.HEAD,
     content: state.currentHEAD,
     searchMatchScore:
       state.searchString === ""
@@ -818,7 +826,7 @@ function generateList(state: State) {
     })
     .map((branch: BranchData) => {
       return {
-        type: ListItemType.Branch,
+        type: ListItemType.BRANCH,
         content: branch,
         searchMatchScore:
           state.searchString === ""
@@ -866,16 +874,17 @@ function locateGitRepoFolder(folder: string): string {
   return locateGitRepoFolder(fsPath.resolve(folder, ".."));
 }
 
-function readPackageInfo() {
+function readPackageInfo(): PackageInfo {
   if (state.packageInfo !== null) {
     return state.packageInfo;
   }
 
-  state.packageInfo = JSON.parse(
+  const info: PackageInfo = JSON.parse(
     readFileSync(fsPath.join(__dirname, "../package.json")).toString(),
   );
+  state.packageInfo = info;
 
-  return state.packageInfo;
+  return info;
 }
 
 function readVersion() {
@@ -1049,13 +1058,12 @@ function deleteJumpDataBranch(branchNames: string[], state: State): void {
 
 function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   const head = readFileSync(fsPath.join(gitRepoFolder, ".git/HEAD")).toString();
-  const detached = !head.startsWith("ref:");
 
-  return {
-    detached,
-    sha: detached ? head.slice(0, 7).trim() : null,
-    branchName: detached ? null : head.slice(16).trim(),
-  };
+  if (!head.startsWith("ref:")) {
+    return { detached: true, sha: head.slice(0, 7).trim(), branchName: null };
+  }
+
+  return { detached: false, sha: null, branchName: head.slice(16).trim() };
 }
 
 /**
@@ -1063,26 +1071,24 @@ function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
  * Returns null in case current HEAD was selected
  * and it's detached.
  */
-function getBranchNameForLine(line: ListItem): string | null {
+function getBranchNameForLine(line: ListItem): string {
   switch (line.type) {
-    case ListItemType.Head: {
-      const content = line.content as CurrentHEAD;
-
-      return content.detached ? content.sha : content.branchName;
+    case ListItemType.HEAD: {
+      return line.content.detached ? line.content.sha : line.content.branchName;
     }
 
-    case ListItemType.Branch: {
-      return (line.content as BranchData).name;
+    case ListItemType.BRANCH: {
+      return line.content.name;
     }
   }
 }
 
-interface GitCommandResult {
+type GitCommandResult = {
   status: number;
   message: string[];
   stdout: string;
   stderr: string;
-}
+};
 
 /**
  * Executes a Git command synchronously and formats the output for the UI.
@@ -1094,11 +1100,9 @@ interface GitCommandResult {
 function gitCommand(command: string, args: string[]): GitCommandResult {
   const commandString = ["git", command, ...args].join(" ");
 
-  const { stdout, stderr, error, status } = spawnSync(
-    "git",
-    [command, ...args],
-    { encoding: "utf-8" },
-  );
+  let { stdout, stderr, error, status } = spawnSync("git", [command, ...args], {
+    encoding: "utf-8",
+  });
 
   if (error) {
     throw new Error(`Could not run ${bold(commandString)}.`);
@@ -1110,14 +1114,15 @@ function gitCommand(command: string, args: string[]): GitCommandResult {
       .split("\n")
       .filter((line) => line !== "");
 
-  const statusIndicatorColor = status > 0 ? red : green;
+  const statusCode = status ?? 1;
+  const statusIndicatorColor = statusCode > 0 ? red : green;
   const message = [
     statusIndicatorColor("‣ ") + dim(commandString),
     ...cleanLines(stdout),
     ...cleanLines(stderr),
   ];
 
-  return { status, message, stdout, stderr };
+  return { status: statusCode, message, stdout, stderr };
 }
 
 function gitSwitch(args: string[]): GitCommandResult {
@@ -1137,8 +1142,8 @@ function gitSwitch(args: string[]): GitCommandResult {
 function switchToListItem(item: ListItem): void {
   const branchName = getBranchNameForLine(item);
 
-  if (item.type === ListItemType.Head) {
-    state.scene = Scene.Message;
+  if (item.type === ListItemType.HEAD) {
+    state.scene = Scene.MESSAGE;
     state.message = [`Staying on ${bold(branchName)}`];
     view(state);
 
@@ -1147,7 +1152,7 @@ function switchToListItem(item: ListItem): void {
 
   const { status, message } = gitSwitch([branchName]);
 
-  state.scene = Scene.Message;
+  state.scene = Scene.MESSAGE;
   state.message = message;
 
   view(state);
@@ -1160,25 +1165,25 @@ function switchToListItem(item: ListItem): void {
  * It mutates the application state (e.g., moving the cursor down, deleting a character
  * from the search string) and triggers a UI re-render based on the action.
  * @param key - The raw hexadecimal byte buffer of the pressed key sequence.
+ *
+ * Supported special key codes
+ * - `1b5b44` - left
+ * - `1b5b43` - right
+ * - `1b5b41` - up
+ * - `1b5b42` - down
+ * - `1b62` - Option+left, word jump
+ * - `1b66` - Option+right, word jump
+ * - `1b4f48`, `01` - Cmd+left, Control+a, Home
+ * - `1b4f46`, `05` - Cmd+right, Control+e, End
+ * - `7f`, `08` - Delete (`08` on Windows)
+ * - `0d` - Enter
+ * - `1b5b337e` - fn+Delete, Forward Delete
+ * - `1b7f` - Option+Delete, delete whole word
+ * - `17` - Control+w, delete the whole line
+ * - `0b` - Control+k, delete from cursor to the end of the line
+ * - `1b30` .. `1b39` - Alt+0..9
  */
 function handleSpecialKey(key: Buffer) {
-  // Supported special key codes
-  // 1b5b44 - left
-  // 1b5b43 - right
-  // 1b5b41 - up
-  // 1b5b42 - down
-  // 1b62 - Option+left, word jump
-  // 1b66 - Option+right, word jump
-  // 1b4f48, 01 - Cmd+left, Control+a, Home
-  // 1b4f46, 05 - Cmd+right, Control+e, End
-  // 7f, 08 - Delete, 08 on Windows
-  // 0d - Enter
-  // 1b5b337e - fn+Delete, Forward Delete
-  // 1b7f - Option+Delete, delete whole word
-  // 17 - Control+w, delete the whole line
-  // 0b - Control+k, delete from cursor to the end of the line
-  // 1b30 .. 1b39 - Alt+0..9
-
   if (key.equals(CTRL_C)) {
     clear();
     process.exit();
@@ -1292,14 +1297,15 @@ function bare() {
   process.stdin.setRawMode(true);
 
   process.stdin.on("data", (data: Buffer) => {
-    parseKeys(data).forEach((key: Buffer) => {
-      if (isSpecialKey(key)) {
-        handleSpecialKey(key);
+    parseKeys(data).forEach((key) => {
+      const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key);
+      if (isSpecialKey(keyBuffer)) {
+        handleSpecialKey(keyBuffer);
 
         return;
       }
 
-      handleStringKey(key);
+      handleStringKey(keyBuffer);
     });
   });
 }
@@ -1314,7 +1320,7 @@ function jumpTo(args: string[]) {
   const switchResult = gitSwitch(args);
 
   if (switchResult.status === 0) {
-    state.scene = Scene.Message;
+    state.scene = Scene.MESSAGE;
     state.message = switchResult.message;
 
     view(state);
@@ -1327,7 +1333,7 @@ function jumpTo(args: string[]) {
   state.list = generateList(state);
 
   if (state.list.length === 0) {
-    state.scene = Scene.Message;
+    state.scene = Scene.MESSAGE;
     state.message = [
       `${bold(yellow(state.searchString))} does not match any branch`,
     ];
@@ -1403,7 +1409,7 @@ function handleError(error: Error): void {
     ];
   }
 
-  state.scene = Scene.Message;
+  state.scene = Scene.MESSAGE;
   view(state);
   process.exit(1);
 }
@@ -1426,7 +1432,7 @@ function handleExit() {
         ? "npm install -g git-jump"
         : "brew upgrade git-jump";
 
-    state.scene = Scene.Message;
+    state.scene = Scene.MESSAGE;
     state.message = state.message.concat([
       "",
       `New version of git-jump is available: ${yellow(currentVersion)} → ${green(state.latestPackageVersion)}.`,
