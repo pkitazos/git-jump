@@ -15,14 +15,14 @@
     "git-jump": "./exec/git-jump"
   },
   "man": [
-    "./git-jump.1"
+    "./docs/git-jump.1"
   ],
   "files": [
     "exec",
     "dist",
     "!dist/*.map",
-    "git-jump.1",
-    "help.txt"
+    "docs/git-jump.1",
+    "docs/help.txt"
   ],
   "author": {
     "name": "Petros Kitazos"
@@ -42,14 +42,14 @@
   "bugs": "https://github.com/pkitazos/git-jump/issues",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^14.0.23",
-    "typescript": "^3.9.6"
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2"
   },
   "engines": {
-    "node": ">=12.12.0",
-    "pnpm": ">=8.0.0"
+    "node": ">=20.0.0",
+    "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@8.15.0",
+  "packageManager": "pnpm@10.33.0",
   "keywords": [
     "git",
     "cli",
