@@ -14,6 +14,7 @@ import {
 import { InputError, ListItem, ListItemVariant, Scene, State } from "./types";
 import { bold, green, red, view, yellow } from "./ui";
 import { handleSpecialKey, handleStringKey, isSpecialKey } from "./input";
+import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
 
 /**
  * The initial application state instantiated on startup.
@@ -21,10 +22,12 @@ import { handleSpecialKey, handleStringKey, isSpecialKey } from "./input";
  * It assumes an interactive terminal environment until proven otherwise.
  */
 export const GOD_STATE: State = {
+  // these maybe also don't belong on the god state?
   rows: process.stdout.rows,
   columns: process.stdout.columns,
-  highlightedLineIndex: 0,
   maxRows: process.stdout.rows,
+  // some of these are display state and some are logical state
+  highlightedLineIndex: 0,
   branches: [],
   searchString: "",
   searchStringCursorPosition: 0,
@@ -34,25 +37,14 @@ export const GOD_STATE: State = {
     branchName: "",
   },
   list: [],
-  lineSelected: false,
   scene: Scene.LIST,
   message: [],
   gitRepoFolder: "",
   isInteractive: true,
+  // these are not like the others
   latestPackageVersion: null,
   packageInfo: null,
 };
-
-/**
- * The name of the hidden directory created within the target Git repository
- * to store jump-related metadata.
- */
-export const JUMP_FOLDER = ".jump";
-
-/**
- * The relative path to the JSON file where branch usage history and timestamps are saved.
- */
-export const DATA_FILE_PATH = `${JUMP_FOLDER}/data.json`;
 
 // todo: probably bad
 export function switchToListItem(item: ListItem): void {

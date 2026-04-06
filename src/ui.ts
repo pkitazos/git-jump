@@ -12,7 +12,6 @@ import {
   Scene,
   State,
 } from "./types";
-import { GOD_STATE } from ".";
 
 const BRANCH_INDEX_PADD = "   ";
 
@@ -196,18 +195,16 @@ export function cursorTo(x: number, y: number) {
 }
 
 export function calculateLinesWindow(
+  rows: number,
   linesCount: number,
   highlightedLineIndex: number,
 ): LinesWindow {
-  const windowSize = GOD_STATE.rows - 2;
+  const windowSize = rows - 2;
   const windowHalf = Math.floor(windowSize / 2);
 
   const topIndex = Math.max(
     0,
-    Math.min(
-      linesCount - windowSize,
-      GOD_STATE.highlightedLineIndex - windowHalf,
-    ),
+    Math.min(linesCount - windowSize, highlightedLineIndex - windowHalf),
   );
   const bottomIndex = topIndex + (windowSize - 1);
 
@@ -346,6 +343,7 @@ export function viewList(state: State): string[] {
 
   const layout = calculateLayout(state);
   const listWindow = calculateLinesWindow(
+    state.rows,
     state.list.length,
     state.highlightedLineIndex,
   );

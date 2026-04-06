@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "fs";
 import * as fsPath from "path";
-import { DATA_FILE_PATH } from ".";
+import { DATA_FILE_PATH } from "./constants";
 import { readRawGitBranches } from "./git";
 import { BranchData, BranchDataCollection, State } from "./types";
 /**
