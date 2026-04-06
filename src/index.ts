@@ -579,6 +579,13 @@ function viewSearchLine(state: State): string {
   return line;
 }
 
+/**
+ * The primary rendering function.
+ * Depending on the active Scene (List or Message), it calculates the required
+ * layout math, clears the necessary terminal space, and uses ANSI escape codes
+ * to draw the updated interface to standard output.
+ * @param state - The current application state.
+ */
 function view(state: State) {
   switch (state.scene) {
     case Scene.List: {
@@ -775,6 +782,14 @@ function sortedListLines(
   });
 }
 
+/**
+ * Generates the final, sorted, and filtered list of items to display in the terminal.
+ * It scores all branches against the current search string using the fuzzy matcher.
+ * If the user is actively searching, it sorts by the highest match score.
+ * If the search bar is empty, it defaults to sorting by the `lastSwitch` timestamp.
+ * @param state - The current application state.
+ * @returns An array of ListItem objects ready for the rendering engine.
+ */
 function generateList(state: State) {
   let list: ListItem[] = [];
 
@@ -956,6 +971,14 @@ function cleanUpJumpData(
   saveBranchesJumpData(gitRepoFolder, cleanJumpData);
 }
 
+/**
+ * Reconciles the actual Git branches with the historical usage data.
+ * It reads the raw Git branches, cross-references them with the timestamps stored
+ * in `.jump/data.json`, cleans up any stale data (deleted branches), and returns
+ * the combined dataset.
+ * @param gitRepoFolder - The absolute path to the root of the Git repository.
+ * @returns An array of BranchData combining Git state with usage history.
+ */
 function readBranchesData(gitRepoFolder: string): BranchData[] {
   const rawGitBranches = readRawGitBranches();
   const branchesJumpData = readBranchesJumpData(gitRepoFolder);
@@ -972,6 +995,14 @@ function readBranchesData(gitRepoFolder: string): BranchData[] {
   });
 }
 
+/**
+ * Updates the timestamp for a specific branch in the `.jump/data.json` file.
+ * This is called immediately after a successful branch switch to ensure the
+ * "recently used" sorting remains accurate.
+ * @param name - The name of the branch to update.
+ * @param lastSwitch - The current timestamp (e.g., Date.now()).
+ * @param state - The current application state.
+ */
 function updateBranchLastSwitch(
   name: string,
   lastSwitch: number,
@@ -1053,6 +1084,13 @@ interface GitCommandResult {
   stderr: string;
 }
 
+/**
+ * Executes a Git command synchronously and formats the output for the UI.
+ * It catches errors and neatly packages the standard output and error streams.
+ * @param command - The primary Git sub-command to run (e.g., "branch", "switch").
+ * @param args - Additional flags or arguments for the command.
+ * @returns An object containing the exit status, formatted UI messages, and raw stdout/stderr.
+ */
 function gitCommand(command: string, args: string[]): GitCommandResult {
   const commandString = ["git", command, ...args].join(" ");
 
@@ -1117,6 +1155,12 @@ function switchToListItem(item: ListItem): void {
   process.exit(status);
 }
 
+/**
+ * Processes special keyboard inputs (navigation arrows, Enter, Delete, quick-select numbers).
+ * It mutates the application state (e.g., moving the cursor down, deleting a character
+ * from the search string) and triggers a UI re-render based on the action.
+ * @param key - The raw hexadecimal byte buffer of the pressed key sequence.
+ */
 function handleSpecialKey(key: Buffer) {
   // Supported special key codes
   // 1b5b44 - left
@@ -1264,7 +1308,7 @@ function bare() {
  * Attempts an immediate branch switch based on a provided search string.
  * First tries an exact git switch; if that fails, it generates a fuzzy-matched
  * list of branches and automatically switches to the best match.
- * * @param args - The search string or partial branch name provided by the user.
+ * @param args - The search string or partial branch name provided by the user.
  */
 function jumpTo(args: string[]) {
   const switchResult = gitSwitch(args);
@@ -1441,7 +1485,7 @@ function ensureNodeVersion() {
  * The primary entry point for the application.
  * Sets up global event listeners and ensures environment compatibility,
  * initialises the application state, and routes execution based on CLI arguments.
- * * @param args - The command-line arguments passed to the script (excluding node and script paths).
+ * @param args - The command-line arguments passed to the script (excluding node and script paths).
  */
 function main(args: string[]) {
   process.on("uncaughtException", handleError);
