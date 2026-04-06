@@ -1,4 +1,17 @@
-import { switchToListItem } from ".";
+import { GOD_STATE, switchToListItem } from ".";
+import {
+  BACKSPACE,
+  CTRL_C,
+  DELETE,
+  DOWN,
+  ENTER,
+  escapeCode,
+  LEFT,
+  RIGHT,
+  UNICODE_C0_RANGE,
+  UNICODE_C1_RANGE,
+  UP,
+} from "./constants";
 import { generateList, getQuickSelectLines } from "./list";
 import { clear, view } from "./ui";
 
@@ -36,72 +49,80 @@ export function handleSpecialKey(key: Buffer) {
   }
 
   if (key.equals(ENTER)) {
-    switchToListItem(state.list[state.highlightedLineIndex]);
+    switchToListItem(GOD_STATE.list[GOD_STATE.highlightedLineIndex]);
 
     return;
   }
 
   if (key.equals(UP)) {
-    state.highlightedLineIndex = Math.max(0, state.highlightedLineIndex - 1);
-    view(state);
+    GOD_STATE.highlightedLineIndex = Math.max(
+      0,
+      GOD_STATE.highlightedLineIndex - 1,
+    );
+    view(GOD_STATE);
 
     return;
   }
 
   if (key.equals(RIGHT)) {
-    if (state.searchStringCursorPosition === state.searchString.length) {
+    if (
+      GOD_STATE.searchStringCursorPosition === GOD_STATE.searchString.length
+    ) {
       return;
     }
 
-    state.searchStringCursorPosition += 1;
-    view(state);
+    GOD_STATE.searchStringCursorPosition += 1;
+    view(GOD_STATE);
 
     return;
   }
 
   if (key.equals(LEFT)) {
-    if (state.searchStringCursorPosition === 0) {
+    if (GOD_STATE.searchStringCursorPosition === 0) {
       return;
     }
 
-    state.searchStringCursorPosition -= 1;
-    view(state);
+    GOD_STATE.searchStringCursorPosition -= 1;
+    view(GOD_STATE);
 
     return;
   }
 
   if (key.equals(DOWN)) {
-    state.highlightedLineIndex = Math.min(
-      state.list.length - 1,
-      state.highlightedLineIndex + 1,
+    GOD_STATE.highlightedLineIndex = Math.min(
+      GOD_STATE.list.length - 1,
+      GOD_STATE.highlightedLineIndex + 1,
     );
-    view(state);
+    view(GOD_STATE);
 
     return;
   }
 
   if (key.equals(DELETE) || key.equals(BACKSPACE)) {
-    if (state.searchStringCursorPosition === 0) {
+    if (GOD_STATE.searchStringCursorPosition === 0) {
       return;
     }
 
-    state.searchString =
-      state.searchString.substring(0, state.searchStringCursorPosition - 1) +
-      state.searchString.substring(
-        state.searchStringCursorPosition,
-        state.searchString.length,
+    GOD_STATE.searchString =
+      GOD_STATE.searchString.substring(
+        0,
+        GOD_STATE.searchStringCursorPosition - 1,
+      ) +
+      GOD_STATE.searchString.substring(
+        GOD_STATE.searchStringCursorPosition,
+        GOD_STATE.searchString.length,
       );
-    state.searchStringCursorPosition -= 1;
-    state.list = generateList(state);
-    state.highlightedLineIndex = 0;
-    view(state);
+    GOD_STATE.searchStringCursorPosition -= 1;
+    GOD_STATE.list = generateList(GOD_STATE);
+    GOD_STATE.highlightedLineIndex = 0;
+    view(GOD_STATE);
 
     return;
   }
 
   if (isMetaPlusNumberCombination(key)) {
     const quickSelectIndex = getNumberFromMetaPlusCombination(key);
-    const quickSelectLines = getQuickSelectLines(state.list);
+    const quickSelectLines = getQuickSelectLines(GOD_STATE.list);
 
     if (quickSelectIndex < quickSelectLines.length) {
       switchToListItem(quickSelectLines[quickSelectIndex]);
@@ -114,18 +135,18 @@ export function handleSpecialKey(key: Buffer) {
 export function handleStringKey(key: Buffer) {
   const inputString = key.toString();
 
-  state.searchString =
-    state.searchString.substring(0, state.searchStringCursorPosition) +
+  GOD_STATE.searchString =
+    GOD_STATE.searchString.substring(0, GOD_STATE.searchStringCursorPosition) +
     inputString +
-    state.searchString.substring(
-      state.searchStringCursorPosition,
-      state.searchString.length,
+    GOD_STATE.searchString.substring(
+      GOD_STATE.searchStringCursorPosition,
+      GOD_STATE.searchString.length,
     );
-  state.searchStringCursorPosition += inputString.length;
-  state.list = generateList(state);
-  state.highlightedLineIndex = 0;
+  GOD_STATE.searchStringCursorPosition += inputString.length;
+  GOD_STATE.list = generateList(GOD_STATE);
+  GOD_STATE.highlightedLineIndex = 0;
 
-  view(state);
+  view(GOD_STATE);
 }
 
 function isEscapeCode(data: Buffer): boolean {

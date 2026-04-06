@@ -20,7 +20,7 @@ import { handleSpecialKey, handleStringKey, isSpecialKey } from "./input";
  * It immediately captures the current terminal dimensions and defaults to the List scene.
  * It assumes an interactive terminal environment until proven otherwise.
  */
-const state: State = {
+export const GOD_STATE: State = {
   rows: process.stdout.rows,
   columns: process.stdout.columns,
   highlightedLineIndex: 0,
@@ -59,19 +59,19 @@ export function switchToListItem(item: ListItem): void {
   const branchName = getBranchNameForLine(item);
 
   if (item.type === ListItemVariant.HEAD) {
-    state.scene = Scene.MESSAGE;
-    state.message = [`Staying on ${bold(branchName)}`];
-    view(state);
+    GOD_STATE.scene = Scene.MESSAGE;
+    GOD_STATE.message = [`Staying on ${bold(branchName)}`];
+    view(GOD_STATE);
 
     process.exit(0);
   }
 
   const { status, message } = gitSwitch([branchName]);
 
-  state.scene = Scene.MESSAGE;
-  state.message = message;
+  GOD_STATE.scene = Scene.MESSAGE;
+  GOD_STATE.message = message;
 
-  view(state);
+  view(GOD_STATE);
 
   process.exit(status);
 }
@@ -82,9 +82,9 @@ export function switchToListItem(item: ListItem): void {
  * and begins listening to and parsing a continuous stream of keyboard inputs.
  */
 function bare() {
-  view(state);
+  view(GOD_STATE);
 
-  if (!state.isInteractive) {
+  if (!GOD_STATE.isInteractive) {
     process.exit(0);
   }
 
@@ -114,37 +114,37 @@ function jumpTo(args: string[]) {
   const switchResult = gitSwitch(args);
 
   if (switchResult.status === 0) {
-    state.scene = Scene.MESSAGE;
-    state.message = switchResult.message;
+    GOD_STATE.scene = Scene.MESSAGE;
+    GOD_STATE.message = switchResult.message;
 
-    view(state);
+    view(GOD_STATE);
 
     process.exit(0);
   }
 
   // Generate filtered and sorted list of branches
-  state.searchString = args[0];
-  state.list = generateList(state);
+  GOD_STATE.searchString = args[0];
+  GOD_STATE.list = generateList(GOD_STATE);
 
-  if (state.list.length === 0) {
-    state.scene = Scene.MESSAGE;
-    state.message = [
-      `${bold(yellow(state.searchString))} does not match any branch`,
+  if (GOD_STATE.list.length === 0) {
+    GOD_STATE.scene = Scene.MESSAGE;
+    GOD_STATE.message = [
+      `${bold(yellow(GOD_STATE.searchString))} does not match any branch`,
     ];
 
-    view(state);
+    view(GOD_STATE);
 
     process.exit(1);
   }
 
-  switchToListItem(state.list[0]);
+  switchToListItem(GOD_STATE.list[0]);
 }
 
 function handleError(error: Error): void {
   if (error instanceof InputError) {
-    state.message = [`${yellow(error.title)} ${error.message}`];
+    GOD_STATE.message = [`${yellow(error.title)} ${error.message}`];
   } else {
-    state.message = [
+    GOD_STATE.message = [
       `${red("Error:")} ${error.message}`,
       "",
       `${bold("What to do?")}`,
@@ -154,19 +154,19 @@ function handleError(error: Error): void {
     ];
   }
 
-  state.scene = Scene.MESSAGE;
-  view(state);
+  GOD_STATE.scene = Scene.MESSAGE;
+  view(GOD_STATE);
   process.exit(1);
 }
 
 function handleExit() {
-  if (state.latestPackageVersion === null) {
+  if (GOD_STATE.latestPackageVersion === null) {
     return;
   }
 
   const currentVersion = readVersion();
 
-  if (compareSemver(currentVersion, state.latestPackageVersion) === -1) {
+  if (compareSemver(currentVersion, GOD_STATE.latestPackageVersion) === -1) {
     const sourcePackageManager = existsSync(
       fsPath.join(__dirname, "../homebrew"),
     )
@@ -177,31 +177,31 @@ function handleExit() {
         ? "npm install -g git-jump"
         : "brew upgrade git-jump";
 
-    state.scene = Scene.MESSAGE;
-    state.message = state.message.concat([
+    GOD_STATE.scene = Scene.MESSAGE;
+    GOD_STATE.message = GOD_STATE.message.concat([
       "",
-      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(state.latestPackageVersion)}.`,
-      `Changelog: https://github.com/pkitazos/git-jump/releases/tag/v${state.latestPackageVersion}`,
+      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(GOD_STATE.latestPackageVersion)}.`,
+      `Changelog: https://github.com/pkitazos/git-jump/releases/tag/v${GOD_STATE.latestPackageVersion}`,
       "",
       `${bold(updateCommand)} to update.`,
     ]);
 
-    view(state);
+    view(GOD_STATE);
   }
 }
 
 function initialize() {
-  state.isInteractive = process.stdout.isTTY === true;
-  state.gitRepoFolder = locateGitRepoFolder(process.cwd());
+  GOD_STATE.isInteractive = process.stdout.isTTY === true;
+  GOD_STATE.gitRepoFolder = locateGitRepoFolder(process.cwd());
 
-  const jumpFolderPath = fsPath.join(state.gitRepoFolder, JUMP_FOLDER);
-  const dataFileFullPath = fsPath.join(state.gitRepoFolder, DATA_FILE_PATH);
+  const jumpFolderPath = fsPath.join(GOD_STATE.gitRepoFolder, JUMP_FOLDER);
+  const dataFileFullPath = fsPath.join(GOD_STATE.gitRepoFolder, DATA_FILE_PATH);
 
   if (!existsSync(jumpFolderPath)) {
     mkdirSync(jumpFolderPath);
     // Exclude .jump from Git tracking
     appendFileSync(
-      fsPath.join(state.gitRepoFolder, ".git", "info", "exclude"),
+      fsPath.join(GOD_STATE.gitRepoFolder, ".git", "info", "exclude"),
       `\n${JUMP_FOLDER}`,
     );
   }
@@ -210,10 +210,10 @@ function initialize() {
     writeFileSync(dataFileFullPath, "{}", { flag: "a" });
   }
 
-  state.currentHEAD = readCurrentHEAD(state.gitRepoFolder);
-  state.branches = readBranchesData(state.gitRepoFolder);
-  state.list = generateList(state);
-  state.highlightedLineIndex = 0;
+  GOD_STATE.currentHEAD = readCurrentHEAD(GOD_STATE.gitRepoFolder);
+  GOD_STATE.branches = readBranchesData(GOD_STATE.gitRepoFolder);
+  GOD_STATE.list = generateList(GOD_STATE);
+  GOD_STATE.highlightedLineIndex = 0;
 }
 
 /**
