@@ -2,16 +2,17 @@ import { exec } from "child_process";
 import { readFileSync } from "fs";
 import * as fsPath from "path";
 import { InputError, PackageInfo } from "./types";
+import { GOD_STATE } from ".";
 
 function readPackageInfo(): PackageInfo {
-  if (state.packageInfo !== null) {
-    return state.packageInfo;
+  if (GOD_STATE.packageInfo !== null) {
+    return GOD_STATE.packageInfo;
   }
 
   const info: PackageInfo = JSON.parse(
     readFileSync(fsPath.join(__dirname, "../package.json")).toString(),
   );
-  state.packageInfo = info;
+  GOD_STATE.packageInfo = info;
 
   return info;
 }
@@ -41,7 +42,7 @@ export function checkUpdates(): void {
       return;
     }
 
-    state.latestPackageVersion = output;
+    GOD_STATE.latestPackageVersion = output;
   });
 }
 

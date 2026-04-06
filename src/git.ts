@@ -4,6 +4,7 @@ import * as fsPath from "path";
 import { updateBranchLastSwitch } from "./storage";
 import { CurrentHEAD, GitCommandResult, InputError } from "./types";
 import { bold, dim, green, red } from "./ui";
+import { GOD_STATE } from ".";
 
 export function locateGitRepoFolder(folder: string): string {
   const dir = opendirSync(folder);
@@ -107,7 +108,7 @@ export function gitSwitch(args: string[]): GitCommandResult {
     args.length === 1 && !isParameter(args[0]) ? args[0] : null;
 
   if (switchResult.status === 0 && branchName !== null) {
-    updateBranchLastSwitch(branchName, Date.now(), state);
+    updateBranchLastSwitch(branchName, Date.now(), GOD_STATE);
   }
 
   return switchResult;

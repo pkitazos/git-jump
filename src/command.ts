@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import * as fsPath from "path";
-import { gitCommand } from "./git";
+import { gitCommand, gitSwitch } from "./git";
 import {
   deleteJumpDataBranch,
   renameJumpDataBranch,
@@ -9,6 +9,7 @@ import {
 import { readVersion } from "./system";
 import { InputError, Scene } from "./types";
 import { bold, dim, multilineTextLayout, view } from "./ui";
+import { GOD_STATE } from ".";
 
 export function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
@@ -76,9 +77,9 @@ function versionSubCommand() {
 }
 
 function listSubCommand(): void {
-  state.isInteractive = false;
+  GOD_STATE.isInteractive = false;
 
-  view(state);
+  view(GOD_STATE);
 
   process.exit(0);
 }
@@ -86,14 +87,14 @@ function listSubCommand(): void {
 function newSubCommand(args: string[]): void {
   const { status, message } = gitSwitch(["--create", ...args]);
 
-  state.scene = Scene.MESSAGE;
-  state.message = message;
+  GOD_STATE.scene = Scene.MESSAGE;
+  GOD_STATE.message = message;
 
   if (status === 0) {
-    updateBranchLastSwitch(args[0], Date.now(), state);
+    updateBranchLastSwitch(args[0], Date.now(), GOD_STATE);
   }
 
-  view(state);
+  view(GOD_STATE);
 
   process.exit(status);
 }
@@ -142,16 +143,16 @@ function renameSubCommand(args: string[]): void {
     args[1],
   ]);
 
-  state.scene = Scene.MESSAGE;
-  state.message = message;
+  GOD_STATE.scene = Scene.MESSAGE;
+  GOD_STATE.message = message;
 
   if (status === 0) {
-    renameJumpDataBranch(args[0], args[1], state);
+    renameJumpDataBranch(args[0], args[1], GOD_STATE);
 
-    state.message.push("Renamed.");
+    GOD_STATE.message.push("Renamed.");
   }
 
-  view(state);
+  view(GOD_STATE);
 
   process.exit(status);
 }
@@ -159,14 +160,14 @@ function renameSubCommand(args: string[]): void {
 function deleteSubCommand(args: string[]): void {
   const { status, message } = gitCommand("branch", ["--delete", ...args]);
 
-  state.scene = Scene.MESSAGE;
-  state.message = message;
+  GOD_STATE.scene = Scene.MESSAGE;
+  GOD_STATE.message = message;
 
   if (status === 0) {
-    deleteJumpDataBranch(args, state);
+    deleteJumpDataBranch(args, GOD_STATE);
   }
 
-  view(state);
+  view(GOD_STATE);
 
   process.exit(status);
 }
