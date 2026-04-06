@@ -189,11 +189,9 @@ type BranchData = {
   lastSwitch: number;
 };
 
-type CurrentHEAD = {
-  detached: boolean;
-  sha: string | null;
-  branchName: string | null;
-};
+type CurrentHEAD =
+  | { detached: true; sha: string; branchName: null }
+  | { detached: false; sha: null; branchName: string };
 
 const ListItemType = {
   HEAD: "head",
@@ -237,7 +235,7 @@ type State = {
   lineSelected: boolean;
   scene: (typeof Scene)[keyof typeof Scene];
   message: string[];
-  gitRepoFolder: string | null;
+  gitRepoFolder: string;
   isInteractive: boolean;
   latestPackageVersion: string | null;
   packageInfo: PackageInfo | null;
@@ -254,13 +252,13 @@ const state: State = {
   currentHEAD: {
     detached: false,
     sha: null,
-    branchName: null,
-  },
+    branchName: "",
+  } as CurrentHEAD,
   list: [],
   lineSelected: false,
   scene: Scene.LIST,
   message: [],
-  gitRepoFolder: null,
+  gitRepoFolder: "",
   isInteractive: true,
   latestPackageVersion: null,
   packageInfo: null,
@@ -452,13 +450,13 @@ function viewListLines(state: State, layout: LayoutColumn[]): string[] {
   return state.list.map((line: ListItem) => {
     switch (line.type) {
       case ListItemType.HEAD: {
-        return viewCurrentHEAD(line.content as CurrentHEAD, layout);
+        return viewCurrentHEAD(line.content, layout);
       }
 
       case ListItemType.BRANCH: {
         quickSelectIndex++;
 
-        return viewBranch(line.content as BranchData, quickSelectIndex, layout);
+        return viewBranch(line.content, quickSelectIndex, layout);
       }
     }
   });
@@ -659,8 +657,8 @@ function log(s: any) {
 }
 
 const escapeCode = 0x1b;
-const UNICODE_C0_RANGE: [Number, Number] = [0x00, 0x1f];
-const UNICODE_C1_RANGE: [Number, Number] = [0x80, 0x9f];
+const UNICODE_C0_RANGE: [number, number] = [0x00, 0x1f];
+const UNICODE_C1_RANGE: [number, number] = [0x80, 0x9f];
 
 function isEscapeCode(data: Buffer): boolean {
   return data[0] === escapeCode;
@@ -802,16 +800,17 @@ function locateGitRepoFolder(folder: string): string {
   return locateGitRepoFolder(fsPath.resolve(folder, ".."));
 }
 
-function readPackageInfo() {
+function readPackageInfo(): PackageInfo {
   if (state.packageInfo !== null) {
     return state.packageInfo;
   }
 
-  state.packageInfo = JSON.parse(
+  const info: PackageInfo = JSON.parse(
     readFileSync(fsPath.join(__dirname, "../package.json")).toString(),
   );
+  state.packageInfo = info;
 
-  return state.packageInfo;
+  return info;
 }
 
 function readVersion() {
@@ -963,13 +962,12 @@ function deleteJumpDataBranch(branchNames: string[], state: State): void {
 
 function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   const head = readFileSync(fsPath.join(gitRepoFolder, ".git/HEAD")).toString();
-  const detached = !head.startsWith("ref:");
 
-  return {
-    detached,
-    sha: detached ? head.slice(0, 7).trim() : null,
-    branchName: detached ? null : head.slice(16).trim(),
-  };
+  if (!head.startsWith("ref:")) {
+    return { detached: true, sha: head.slice(0, 7).trim(), branchName: null };
+  }
+
+  return { detached: false, sha: null, branchName: head.slice(16).trim() };
 }
 
 /**
@@ -977,16 +975,14 @@ function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
  * Returns null in case current HEAD was selected
  * and it's detached.
  */
-function getBranchNameForLine(line: ListItem): string | null {
+function getBranchNameForLine(line: ListItem): string {
   switch (line.type) {
     case ListItemType.HEAD: {
-      const content = line.content as CurrentHEAD;
-
-      return content.detached ? content.sha : content.branchName;
+      return line.content.detached ? line.content.sha : line.content.branchName;
     }
 
     case ListItemType.BRANCH: {
-      return (line.content as BranchData).name;
+      return line.content.name;
     }
   }
 }
@@ -1015,14 +1011,15 @@ function gitCommand(command: string, args: string[]): GitCommandResult {
       .split("\n")
       .filter((line) => line !== "");
 
-  const statusIndicatorColor = status > 0 ? red : green;
+  const statusCode = status ?? 1;
+  const statusIndicatorColor = statusCode > 0 ? red : green;
   const message = [
     statusIndicatorColor("‣ ") + dim(commandString),
     ...cleanLines(stdout),
     ...cleanLines(stderr),
   ];
 
-  return { status, message, stdout, stderr };
+  return { status: statusCode, message, stdout, stderr };
 }
 
 function gitSwitch(args: string[]): GitCommandResult {
@@ -1060,24 +1057,25 @@ function switchToListItem(item: ListItem): void {
   process.exit(status);
 }
 
+/**
+ * Supported special key codes
+ * - `1b5b44` - left
+ * - `1b5b43` - right
+ * - `1b5b41` - up
+ * - `1b5b42` - down
+ * - `1b62` - Option+left, word jump
+ * - `1b66` - Option+right, word jump
+ * - `1b4f48`, `01` - Cmd+left, Control+a, Home
+ * - `1b4f46`, `05` - Cmd+right, Control+e, End
+ * - `7f`, `08` - Delete (`08` on Windows)
+ * - `0d` - Enter
+ * - `1b5b337e` - fn+Delete, Forward Delete
+ * - `1b7f` - Option+Delete, delete whole word
+ * - `17` - Control+w, delete the whole line
+ * - `0b` - Control+k, delete from cursor to the end of the line
+ * - `1b30` .. `1b39` - Alt+0..9
+ */
 function handleSpecialKey(key: Buffer) {
-  // Supported special key codes
-  // 1b5b44 - left
-  // 1b5b43 - right
-  // 1b5b41 - up
-  // 1b5b42 - down
-  // 1b62 - Option+left, word jump
-  // 1b66 - Option+right, word jump
-  // 1b4f48, 01 - Cmd+left, Control+a, Home
-  // 1b4f46, 05 - Cmd+right, Control+e, End
-  // 7f, 08 - Delete, 08 on Windows
-  // 0d - Enter
-  // 1b5b337e - fn+Delete, Forward Delete
-  // 1b7f - Option+Delete, delete whole word
-  // 17 - Control+w, delete the whole line
-  // 0b - Control+k, delete from cursor to the end of the line
-  // 1b30 .. 1b39 - Alt+0..9
-
   if (key.equals(CTRL_C)) {
     clear();
     process.exit();
@@ -1186,14 +1184,15 @@ function bare() {
   process.stdin.setRawMode(true);
 
   process.stdin.on("data", (data: Buffer) => {
-    parseKeys(data).forEach((key: Buffer) => {
-      if (isSpecialKey(key)) {
-        handleSpecialKey(key);
+    parseKeys(data).forEach((key) => {
+      const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key);
+      if (isSpecialKey(keyBuffer)) {
+        handleSpecialKey(keyBuffer);
 
         return;
       }
 
-      handleStringKey(key);
+      handleStringKey(keyBuffer);
     });
   });
 }
