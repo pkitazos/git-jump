@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ES2015",
+    "target": "ES2022",
     "module": "CommonJS",
     "noImplicitAny": true,
     "removeComments": true,
+    "rootDir": "./src",
     "outDir": "./dist",
     "sourceMap": true,
+    "types": ["node"],
   },
   "include": ["src/**/*.ts"],
 }
