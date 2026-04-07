@@ -16,7 +16,7 @@ export type UIState = {
   searchString: string;
   searchStringCursorPosition: number;
   list: ListItem[];
-  scene: Scene;
+  scene: TScene;
   message: string[];
 };
 
@@ -98,7 +98,7 @@ export type PackageInfo = {
  */
 export const Scene = { LIST: "list", MESSAGE: "message" } as const;
 
-export type Scene = (typeof Scene)[keyof typeof Scene];
+export type TScene = (typeof Scene)[keyof typeof Scene];
 
 /**
  * Defines the visible window of list items to render.
@@ -112,19 +112,22 @@ export type LinesWindow = {
 /**
  * Categorises the different columns displayed in the UI layout.
  */
-export enum LayoutColumnType {
-  Index,
-  BranchName,
-  LastUsed,
-  MoreIndicator,
-}
+export const LayoutColumnVariant = {
+  INDEX: "Index",
+  BRANCH_NAME: "BranchName",
+  LAST_USED: "LastUsed",
+  MORE_INDICATOR: "MoreIndicator",
+} as const;
+
+type TLayoutColumnVariant =
+  (typeof LayoutColumnVariant)[keyof typeof LayoutColumnVariant];
 
 /**
  * Defines the structural layout of a single column in the terminal UI,
  * including its type and calculated width.
  */
 export type LayoutColumn = {
-  type: LayoutColumnType;
+  type: TLayoutColumnVariant;
   width: number;
 };
 
@@ -135,7 +138,10 @@ export type GitCommandResult = {
   stderr: string;
 };
 
-export enum ListSortCriterion {
-  LastSwitch,
-  SearchMatchScore,
-}
+export const ListSortCriterion = {
+  LAST_SWITCH: "LastSwitch",
+  SEARCH_MATCH_SCORE: "SearchMatchScore",
+} as const;
+
+export type TListSortCriterion =
+  (typeof ListSortCriterion)[keyof typeof ListSortCriterion];

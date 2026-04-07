@@ -5,7 +5,7 @@ import {
   BranchData,
   CurrentHEAD,
   LayoutColumn,
-  LayoutColumnType,
+  LayoutColumnVariant,
   LinesWindow,
   ListItem,
   ListItemVariant,
@@ -230,10 +230,10 @@ export function calculateLayout(state: State): LayoutColumn[] {
     moreIndicatorColumnWidth;
 
   return [
-    { type: LayoutColumnType.Index, width: indexColumnWidth },
-    { type: LayoutColumnType.BranchName, width: branchNameColumnWidth },
+    { type: LayoutColumnVariant.INDEX, width: indexColumnWidth },
+    { type: LayoutColumnVariant.BRANCH_NAME, width: branchNameColumnWidth },
     {
-      type: LayoutColumnType.MoreIndicator,
+      type: LayoutColumnVariant.MORE_INDICATOR,
       width: moreIndicatorSpacingWidth + moreIndicatorColumnWidth,
     },
   ];
@@ -274,11 +274,11 @@ export function viewCurrentHEAD(
   layout: LayoutColumn[],
 ): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
-    if (column.type === LayoutColumnType.Index) {
+    if (column.type === LayoutColumnVariant.INDEX) {
       return line + BRANCH_INDEX_PADD;
     }
 
-    if (column.type === LayoutColumnType.BranchName) {
+    if (column.type === LayoutColumnVariant.BRANCH_NAME) {
       const branch = currentHEAD.detached
         ? `${bold(currentHEAD.sha)} ${dim("(detached)")}`
         : bold(currentHEAD.branchName);
@@ -296,13 +296,13 @@ export function viewBranch(
   layout: LayoutColumn[],
 ): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
-    if (column.type === LayoutColumnType.Index) {
+    if (column.type === LayoutColumnVariant.INDEX) {
       return (
         line + (index < 10 ? ` ${dim(index.toString())} ` : BRANCH_INDEX_PADD)
       );
     }
 
-    if (column.type === LayoutColumnType.BranchName) {
+    if (column.type === LayoutColumnVariant.BRANCH_NAME) {
       return (
         line + truncate(branch.name, column.width).padEnd(column.width, " ")
       );
@@ -331,7 +331,9 @@ export function viewListLines(state: State, layout: LayoutColumn[]): string[] {
 }
 
 export function viewNonInteractiveList(state: State): string[] {
-  const layout = [{ type: LayoutColumnType.BranchName, width: state.columns }];
+  const layout = [
+    { type: LayoutColumnVariant.BRANCH_NAME, width: state.columns },
+  ];
 
   return viewListLines(state, layout);
 }
