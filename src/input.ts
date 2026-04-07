@@ -1,4 +1,3 @@
-import { GOD_STATE, switchToListItem } from ".";
 import {
   BACKSPACE,
   CTRL_C,
@@ -13,16 +12,22 @@ import {
   UP,
 } from "./constants";
 import { generateList, getQuickSelectLines } from "./list";
-import { clear, view } from "./ui";
+import { AppState, InputResult } from "./types";
 
-export function isSpecialKey(key: Buffer): boolean {
+export function handleKey(key: Buffer, state: AppState): InputResult {
+  return isSpecialKey(key)
+    ? handleSpecialKey(key, state)
+    : handleStringKey(key, state);
+}
+
+function isSpecialKey(key: Buffer): boolean {
   return isEscapeCode(key) || isC0C1ControlCode(key) || isDeleteKey(key);
 }
 
 /**
- * Processes special keyboard inputs (navigation arrows, Enter, Delete, quick-select numbers).
- * It mutates the application state (e.g., moving the cursor down, deleting a character
- * from the search string) and triggers a UI re-render based on the action.
+ * Takes in a special character and returns the appropriate action to modify
+ * the application state accordingly
+ *
  * @param key - The raw hexadecimal byte buffer of the pressed key sequence.
  *
  * Supported special key codes
@@ -42,111 +47,126 @@ export function isSpecialKey(key: Buffer): boolean {
  * - `0b` - Control+k, delete from cursor to the end of the line
  * - `1b30` .. `1b39` - Alt+0..9
  */
-export function handleSpecialKey(key: Buffer) {
-  if (key.equals(CTRL_C)) {
-    clear();
-    process.exit();
-  }
+function handleSpecialKey(key: Buffer, state: AppState): InputResult {
+  if (key.equals(CTRL_C)) return { tag: "exit" };
 
   if (key.equals(ENTER)) {
-    switchToListItem(GOD_STATE.list[GOD_STATE.highlightedLineIndex]);
-
-    return;
+    return { tag: "switchTo", item: state.list[state.highlightedLineIndex] };
   }
 
   if (key.equals(UP)) {
-    GOD_STATE.highlightedLineIndex = Math.max(
-      0,
-      GOD_STATE.highlightedLineIndex - 1,
-    );
-    view(GOD_STATE);
-
-    return;
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        highlightedLineIndex: Math.max(0, state.highlightedLineIndex - 1),
+      },
+    };
   }
 
   if (key.equals(RIGHT)) {
-    if (
-      GOD_STATE.searchStringCursorPosition === GOD_STATE.searchString.length
-    ) {
-      return;
+    if (state.searchStringCursorPosition === state.searchString.length) {
+      return { tag: "noop" };
     }
 
-    GOD_STATE.searchStringCursorPosition += 1;
-    view(GOD_STATE);
-
-    return;
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchStringCursorPosition: state.searchStringCursorPosition + 1,
+      },
+    };
   }
 
   if (key.equals(LEFT)) {
-    if (GOD_STATE.searchStringCursorPosition === 0) {
-      return;
+    if (state.searchStringCursorPosition === 0) {
+      return { tag: "noop" };
     }
 
-    GOD_STATE.searchStringCursorPosition -= 1;
-    view(GOD_STATE);
-
-    return;
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchStringCursorPosition: state.searchStringCursorPosition - 1,
+      },
+    };
   }
 
   if (key.equals(DOWN)) {
-    GOD_STATE.highlightedLineIndex = Math.min(
-      GOD_STATE.list.length - 1,
-      GOD_STATE.highlightedLineIndex + 1,
-    );
-    view(GOD_STATE);
-
-    return;
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        highlightedLineIndex: Math.min(
+          state.list.length - 1,
+          state.highlightedLineIndex + 1,
+        ),
+      },
+    };
   }
 
   if (key.equals(DELETE) || key.equals(BACKSPACE)) {
-    if (GOD_STATE.searchStringCursorPosition === 0) {
-      return;
+    if (state.searchStringCursorPosition === 0) {
+      return { tag: "noop" };
     }
 
-    GOD_STATE.searchString =
-      GOD_STATE.searchString.substring(
-        0,
-        GOD_STATE.searchStringCursorPosition - 1,
-      ) +
-      GOD_STATE.searchString.substring(
-        GOD_STATE.searchStringCursorPosition,
-        GOD_STATE.searchString.length,
-      );
-    GOD_STATE.searchStringCursorPosition -= 1;
-    GOD_STATE.list = generateList(GOD_STATE);
-    GOD_STATE.highlightedLineIndex = 0;
-    view(GOD_STATE);
+    const newSearchString = removeAt(
+      state.searchString,
+      state.searchStringCursorPosition - 1,
+    );
 
-    return;
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchString: newSearchString,
+        searchStringCursorPosition: state.searchStringCursorPosition - 1,
+        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        highlightedLineIndex: 0,
+      },
+    };
   }
 
   if (isMetaPlusNumberCombination(key)) {
     const quickSelectIndex = getNumberFromMetaPlusCombination(key);
-    const quickSelectLines = getQuickSelectLines(GOD_STATE.list);
+    const quickSelectLines = getQuickSelectLines(state.list);
 
     if (quickSelectIndex < quickSelectLines.length) {
-      switchToListItem(quickSelectLines[quickSelectIndex]);
+      return { tag: "switchTo", item: quickSelectLines[quickSelectIndex] };
     }
-
-    return;
   }
+
+  return { tag: "noop" };
 }
 
-export function handleStringKey(key: Buffer) {
+function removeAt(str: string, index: number): string {
+  return str.split("").toSpliced(index, 1).join("");
+}
+
+function insertAt(str: string, index: number, text: string): string {
+  return str.split("").toSpliced(index, 0, text).join("");
+}
+
+function handleStringKey(key: Buffer, state: AppState): InputResult {
   const inputString = key.toString();
 
-  GOD_STATE.searchString =
-    GOD_STATE.searchString.substring(0, GOD_STATE.searchStringCursorPosition) +
-    inputString +
-    GOD_STATE.searchString.substring(
-      GOD_STATE.searchStringCursorPosition,
-      GOD_STATE.searchString.length,
-    );
-  GOD_STATE.searchStringCursorPosition += inputString.length;
-  GOD_STATE.list = generateList(GOD_STATE);
-  GOD_STATE.highlightedLineIndex = 0;
+  const newSearchString = insertAt(
+    state.searchString,
+    state.searchStringCursorPosition,
+    inputString,
+  );
 
-  view(GOD_STATE);
+  return {
+    tag: "stateUpdate",
+    state: {
+      ...state,
+      searchString: newSearchString,
+      searchStringCursorPosition:
+        state.searchStringCursorPosition + inputString.length,
+      list: generateList(state.branches, state.currentHEAD, newSearchString),
+      highlightedLineIndex: 0,
+    },
+  };
 }
 
 function isEscapeCode(data: Buffer): boolean {

@@ -1,28 +1,21 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import * as fsPath from "path";
+
 import { executeSubCommand, isSubCommand } from "./command";
+import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
 import { gitSwitch, locateGitRepoFolder, readCurrentHEAD } from "./git";
+import { handleKey } from "./input";
 import { generateList, getBranchNameForLine } from "./list";
 import { parseKeys } from "./parseKeys";
 import { readBranchesData } from "./storage";
 import {
-  fetchLatestVersion,
   ensureNodeVersion,
-  readPackageInfo,
+  fetchLatestVersion,
   isOlderVersion,
+  readPackageInfo,
 } from "./system";
-import {
-  BranchData,
-  CurrentHEAD,
-  InputError,
-  ListItem,
-  ListItemVariant,
-  Scene,
-  State,
-} from "./types";
-import { bold, green, red, view, yellow } from "./ui";
-import { handleSpecialKey, handleStringKey, isSpecialKey } from "./input";
-import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
+import { InputError, ListItem, ListItemVariant, Scene, State } from "./types";
+import { bold, clear, green, red, view, yellow } from "./ui";
 
 /**
  * The initial application state instantiated on startup.
@@ -30,11 +23,9 @@ import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
  * It assumes an interactive terminal environment until proven otherwise.
  */
 export const GOD_STATE: State = {
-  // these maybe also don't belong on the god state?
   rows: process.stdout.rows,
   columns: process.stdout.columns,
   maxRows: process.stdout.rows,
-  // some of these are display state and some are logical state
   highlightedLineIndex: 0,
   branches: [],
   searchString: "",
@@ -51,32 +42,7 @@ export const GOD_STATE: State = {
   isInteractive: true,
 };
 
-export type AppConfig = {
-  gitRepoFolder: string;
-  isInteractive: boolean;
-  rows: number;
-  columns: number;
-  maxRows: number;
-};
-
-export type GitData = {
-  branches: BranchData[];
-  currentHEAD: CurrentHEAD;
-};
-
-export type UIState = {
-  highlightedLineIndex: number;
-  searchString: string;
-  searchStringCursorPosition: number;
-  list: ListItem[];
-  scene: Scene;
-  message: string[];
-};
-
-export type AppState = AppConfig & GitData & UIState;
-
-// these are not like the others
-let latestPackageVersion = fetchLatestVersion();
+let latestPackageVersion: Promise<string | null> | null = null;
 
 // todo: the fact that I'm exporting this
 // is a sign that something is wrong
@@ -118,13 +84,28 @@ function bare() {
   process.stdin.on("data", (data: Buffer) => {
     parseKeys(data).forEach((key) => {
       const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key);
-      if (isSpecialKey(keyBuffer)) {
-        handleSpecialKey(keyBuffer);
 
-        return;
+      const result = handleKey(keyBuffer, GOD_STATE);
+
+      switch (result.tag) {
+        case "noop":
+          break;
+
+        case "stateUpdate":
+          // can clean this up later
+          Object.assign(GOD_STATE, result.state);
+          view(GOD_STATE);
+          break;
+
+        case "switchTo":
+          switchToListItem(result.item);
+          break;
+
+        case "exit":
+          clear();
+          process.exit();
+          break;
       }
-
-      handleStringKey(keyBuffer);
     });
   });
 }
@@ -149,7 +130,11 @@ function jumpTo(args: string[]) {
 
   // Generate filtered and sorted list of branches
   GOD_STATE.searchString = args[0];
-  GOD_STATE.list = generateList(GOD_STATE);
+  GOD_STATE.list = generateList(
+    GOD_STATE.branches,
+    GOD_STATE.currentHEAD,
+    GOD_STATE.searchString,
+  );
 
   if (GOD_STATE.list.length === 0) {
     GOD_STATE.scene = Scene.MESSAGE;
@@ -242,7 +227,11 @@ function initialize() {
 
   GOD_STATE.currentHEAD = readCurrentHEAD(GOD_STATE.gitRepoFolder);
   GOD_STATE.branches = readBranchesData(GOD_STATE.gitRepoFolder);
-  GOD_STATE.list = generateList(GOD_STATE);
+  GOD_STATE.list = generateList(
+    GOD_STATE.branches,
+    GOD_STATE.currentHEAD,
+    GOD_STATE.searchString,
+  );
   GOD_STATE.highlightedLineIndex = 0;
 }
 
@@ -263,9 +252,8 @@ function main(args: string[]) {
     // Checking for updates only when interactive UI is started
     // as only then there potentially a chance for update
     // request to finish before git-jump exists
-    fetchLatestVersion();
+    latestPackageVersion = fetchLatestVersion();
     bare();
-
     return;
   }
 
