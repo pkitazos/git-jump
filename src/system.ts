@@ -2,63 +2,83 @@ import { exec } from "child_process";
 import { readFileSync } from "fs";
 import * as fsPath from "path";
 import { InputError, PackageInfo } from "./types";
-import { GOD_STATE } from ".";
 
-function readPackageInfo(): PackageInfo {
-  if (GOD_STATE.packageInfo !== null) {
-    return GOD_STATE.packageInfo;
-  }
+let cachedPackageInfo: PackageInfo | null = null;
 
-  const info: PackageInfo = JSON.parse(
-    readFileSync(fsPath.join(__dirname, "../package.json")).toString(),
-  );
-  GOD_STATE.packageInfo = info;
+// I really don't like this whole thing where we get info from NPM
+// and manually extract the version using regex from the response
+// I'll need to think of a better solution to this later on
 
-  return info;
-}
+const SEMVER_EXACT_PATTERN = /^\d+\.\d+\.\d+$/;
+const SEMVER_RANGE_PATTERN = /\d+\.\d+\.\d+/;
 
-export function readVersion() {
-  return readPackageInfo().version;
-}
+export function fetchLatestVersion(): Promise<string | null> {
+  return new Promise((resolve) => {
+    exec("npm info git-jump dist-tags.latest", (error, stdout) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
 
-function readRequiredNodeVersion() {
-  const semverString = readPackageInfo().engines.node;
-  const match = semverString.match(/\d+\.\d+\.\d+/);
-
-  return match === null ? null : match[0];
-}
-
-export function checkUpdates(): void {
-  const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
-
-  exec("npm info git-jump dist-tags.latest", (error, stdout) => {
-    if (error) {
-      return;
-    }
-
-    const output = stdout.trim();
-
-    if (!VERSION_PATTERN.test(output)) {
-      return;
-    }
-
-    GOD_STATE.latestPackageVersion = output;
+      const version = stdout.trim();
+      resolve(SEMVER_EXACT_PATTERN.test(version) ? version : null);
+    });
   });
 }
 
-export function compareSemver(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true });
+// I could technically just inline this, but It makes the `readPackageInfo` function
+// more focused on what it's job is
+function isPackageInfo(value: unknown): value is PackageInfo {
+  if (typeof value !== "object" || value === null) return false;
+
+  // since I check for typeof === "object", this assertion is fine
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.version !== "string") return false;
+  if (typeof obj.engines !== "object" || obj.engines === null) return false;
+
+  // same here
+  const engines = obj.engines as Record<string, unknown>;
+  if (typeof engines.node !== "string") return false;
+
+  return true;
+}
+
+export function readPackageInfo(): PackageInfo {
+  if (cachedPackageInfo !== null) return cachedPackageInfo;
+
+  const data: unknown = JSON.parse(
+    readFileSync(fsPath.join(__dirname, "../package.json"), "utf-8"),
+  );
+
+  if (!isPackageInfo(data)) {
+    throw new Error("package.json is missing required fields");
+  }
+
+  const nodeVersionMatch = data.engines.node.match(SEMVER_RANGE_PATTERN);
+  if (nodeVersionMatch === null) {
+    throw new Error(
+      `package.json engines.node is not a valid semver: ${data.engines.node}`,
+    );
+  }
+
+  // cache the result so subsequent calls skip the file read and validation
+  cachedPackageInfo = {
+    version: data.version,
+    engines: { node: nodeVersionMatch[0] },
+  };
+
+  return cachedPackageInfo;
+}
+
+export function isOlderVersion(a: string, b: string): boolean {
+  return a.localeCompare(b, undefined, { numeric: true }) < 0;
 }
 
 export function ensureNodeVersion() {
   const currentVersion = process.versions.node;
-  const requiredVersion = readRequiredNodeVersion();
+  const requiredVersion = readPackageInfo().engines.node;
 
-  if (requiredVersion === null) {
-    return;
-  }
-
-  if (compareSemver(currentVersion, requiredVersion) === -1) {
+  if (isOlderVersion(currentVersion, requiredVersion)) {
     throw new InputError(
       "Unsupported Node.js version.",
       `git-jump requires Node.js version >=${requiredVersion}, you're using ${currentVersion}.`,

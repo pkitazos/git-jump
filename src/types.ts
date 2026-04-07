@@ -82,8 +82,6 @@ export type State = {
   message: string[];
   gitRepoFolder: string;
   isInteractive: boolean;
-  latestPackageVersion: string | null;
-  packageInfo: PackageInfo | null;
 };
 
 /**
