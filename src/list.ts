@@ -1,10 +1,10 @@
 import { fuzzyMatch } from "./fuzzy";
 import {
   BranchData,
+  CurrentHEAD,
   ListItem,
   ListItemVariant,
   ListSortCriterion,
-  State,
 } from "./types";
 
 /**
@@ -15,40 +15,37 @@ import {
  * @param state - The current application state.
  * @returns An array of ListItem objects ready for the rendering engine.
  */
-export function generateList(state: State) {
+export function generateList(
+  branches: BranchData[],
+  currentHEAD: CurrentHEAD,
+  searchString: string,
+) {
   let list: ListItem[] = [];
 
   list.push({
     type: ListItemVariant.HEAD,
-    content: state.currentHEAD,
+    content: currentHEAD,
     searchMatchScore:
-      state.searchString === ""
+      searchString === ""
         ? 1
         : fuzzyMatch(
-            state.searchString,
-            state.currentHEAD.detached
-              ? state.currentHEAD.sha
-              : state.currentHEAD.branchName,
+            searchString,
+            currentHEAD.detached ? currentHEAD.sha : currentHEAD.branchName,
           ),
   });
 
-  const branchLines: ListItem[] = state.branches
+  const branchLines: ListItem[] = branches
     // Filter out current branch if HEAD is not detached,
     // because current branch will be displayed as the first list
     .filter((branch) => {
-      return (
-        state.currentHEAD.detached ||
-        branch.name !== state.currentHEAD.branchName
-      );
+      return currentHEAD.detached || branch.name !== currentHEAD.branchName;
     })
     .map((branch: BranchData) => {
       return {
         type: ListItemVariant.BRANCH,
         content: branch,
         searchMatchScore:
-          state.searchString === ""
-            ? 1
-            : fuzzyMatch(state.searchString, branch.name),
+          searchString === "" ? 1 : fuzzyMatch(searchString, branch.name),
       };
     });
 
@@ -57,7 +54,7 @@ export function generateList(state: State) {
     .filter((line: ListItem) => line.searchMatchScore > 0);
 
   const sortCriterion =
-    state.searchString === ""
+    searchString === ""
       ? ListSortCriterion.LastSwitch
       : ListSortCriterion.SearchMatchScore;
 
@@ -66,9 +63,7 @@ export function generateList(state: State) {
 
 export function getQuickSelectLines(list: ListItem[]): ListItem[] {
   return list
-    .filter((line: ListItem) => {
-      return line.type !== ListItemVariant.HEAD;
-    })
+    .filter((line: ListItem) => line.type !== ListItemVariant.HEAD)
     .slice(0, 10);
 }
 

@@ -1,3 +1,33 @@
+export type AppConfig = {
+  gitRepoFolder: string;
+  isInteractive: boolean;
+  rows: number;
+  columns: number;
+  maxRows: number;
+};
+
+export type GitData = {
+  branches: BranchData[];
+  currentHEAD: CurrentHEAD;
+};
+
+export type UIState = {
+  highlightedLineIndex: number;
+  searchString: string;
+  searchStringCursorPosition: number;
+  list: ListItem[];
+  scene: Scene;
+  message: string[];
+};
+
+/**
+ * The central state object for the entire interactive terminal application.
+ * Tracks terminal dimensions, cursor positions, loaded Git data, UI list state, and package information.
+ */
+export type AppState = AppConfig & GitData & UIState;
+
+export type State = AppState;
+
 export class InputError extends Error {
   title: string;
 
@@ -6,6 +36,12 @@ export class InputError extends Error {
     this.title = title;
   }
 }
+
+export type InputResult =
+  | { tag: "stateUpdate"; state: UIState }
+  | { tag: "switchTo"; item: ListItem }
+  | { tag: "exit" }
+  | { tag: "noop" };
 
 /**
  * Represents a single Git branch and its usage history.
@@ -63,26 +99,6 @@ export type PackageInfo = {
 export const Scene = { LIST: "list", MESSAGE: "message" } as const;
 
 export type Scene = (typeof Scene)[keyof typeof Scene];
-
-/**
- * The central state object for the entire interactive terminal application.
- * Tracks terminal dimensions, cursor positions, loaded Git data, UI list state, and package information.
- */
-export type State = {
-  rows: number;
-  columns: number;
-  highlightedLineIndex: number;
-  maxRows: number;
-  branches: BranchData[];
-  searchString: string;
-  searchStringCursorPosition: number;
-  currentHEAD: CurrentHEAD;
-  list: ListItem[];
-  scene: Scene;
-  message: string[];
-  gitRepoFolder: string;
-  isInteractive: boolean;
-};
 
 /**
  * Defines the visible window of list items to render.
