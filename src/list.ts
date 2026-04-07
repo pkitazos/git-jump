@@ -5,6 +5,7 @@ import {
   ListItem,
   ListItemVariant,
   ListSortCriterion,
+  type TListSortCriterion,
 } from "./types";
 
 /**
@@ -55,8 +56,8 @@ export function generateList(
 
   const sortCriterion =
     searchString === ""
-      ? ListSortCriterion.LastSwitch
-      : ListSortCriterion.SearchMatchScore;
+      ? ListSortCriterion.LAST_SWITCH
+      : ListSortCriterion.SEARCH_MATCH_SCORE;
 
   return sortedListLines(list, sortCriterion);
 }
@@ -86,9 +87,9 @@ export function getBranchNameForLine(line: ListItem): string {
 
 function sortedListLines(
   list: ListItem[],
-  criterion: ListSortCriterion,
+  criterion: TListSortCriterion,
 ): ListItem[] {
-  if (criterion === ListSortCriterion.LastSwitch) {
+  if (criterion === ListSortCriterion.LAST_SWITCH) {
     return list.slice().sort((a: ListItem, b: ListItem) => {
       if (b.type === ListItemVariant.HEAD) {
         return 1;

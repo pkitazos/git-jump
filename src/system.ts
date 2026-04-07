@@ -1,6 +1,7 @@
 import { exec } from "child_process";
 import { readFileSync } from "fs";
 import * as fsPath from "path";
+
 import { InputError, PackageInfo } from "./types";
 
 let cachedPackageInfo: PackageInfo | null = null;
