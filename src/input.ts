@@ -5,7 +5,7 @@ import {
   DELETE,
   DOWN,
   ENTER,
-  escapeCode,
+  ESCAPE_CODE,
   LEFT,
   RIGHT,
   UNICODE_C0_RANGE,
@@ -150,7 +150,7 @@ export function handleStringKey(key: Buffer) {
 }
 
 function isEscapeCode(data: Buffer): boolean {
-  return data[0] === escapeCode;
+  return data[0] === ESCAPE_CODE;
 }
 
 function isC0C1ControlCode(data: Buffer): boolean {
@@ -174,7 +174,7 @@ function isDeleteKey(data: Buffer) {
 }
 
 function isMetaPlusNumberCombination(key: Buffer) {
-  if (key.length === 2 && key[0] === escapeCode) {
+  if (key.length === 2 && key[0] === ESCAPE_CODE) {
     return key[1] >= 0x30 && key[1] <= 0x39;
   }
 }

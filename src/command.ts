@@ -6,7 +6,7 @@ import {
   renameJumpDataBranch,
   updateBranchLastSwitch,
 } from "./storage";
-import { readVersion } from "./system";
+import { readPackageInfo } from "./system";
 import { InputError, Scene } from "./types";
 import { bold, dim, multilineTextLayout, view } from "./ui";
 import { GOD_STATE } from ".";
@@ -72,7 +72,8 @@ export function executeSubCommand(name: string, args: string[]) {
 }
 
 function versionSubCommand() {
-  process.stdout.write(`${readVersion()}\n`);
+  let { version } = readPackageInfo();
+  process.stdout.write(`${version}\n`);
   process.exit(0);
 }
 

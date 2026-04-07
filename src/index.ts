@@ -6,12 +6,20 @@ import { generateList, getBranchNameForLine } from "./list";
 import { parseKeys } from "./parseKeys";
 import { readBranchesData } from "./storage";
 import {
-  checkUpdates,
-  compareSemver,
+  fetchLatestVersion,
   ensureNodeVersion,
-  readVersion,
+  readPackageInfo,
+  isOlderVersion,
 } from "./system";
-import { InputError, ListItem, ListItemVariant, Scene, State } from "./types";
+import {
+  BranchData,
+  CurrentHEAD,
+  InputError,
+  ListItem,
+  ListItemVariant,
+  Scene,
+  State,
+} from "./types";
 import { bold, green, red, view, yellow } from "./ui";
 import { handleSpecialKey, handleStringKey, isSpecialKey } from "./input";
 import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
@@ -41,12 +49,37 @@ export const GOD_STATE: State = {
   message: [],
   gitRepoFolder: "",
   isInteractive: true,
-  // these are not like the others
-  latestPackageVersion: null,
-  packageInfo: null,
 };
 
-// todo: probably bad
+export type AppConfig = {
+  gitRepoFolder: string;
+  isInteractive: boolean;
+  rows: number;
+  columns: number;
+  maxRows: number;
+};
+
+export type GitData = {
+  branches: BranchData[];
+  currentHEAD: CurrentHEAD;
+};
+
+export type UIState = {
+  highlightedLineIndex: number;
+  searchString: string;
+  searchStringCursorPosition: number;
+  list: ListItem[];
+  scene: Scene;
+  message: string[];
+};
+
+export type AppState = AppConfig & GitData & UIState;
+
+// these are not like the others
+let latestPackageVersion = fetchLatestVersion();
+
+// todo: the fact that I'm exporting this
+// is a sign that something is wrong
 export function switchToListItem(item: ListItem): void {
   const branchName = getBranchNameForLine(item);
 
@@ -151,14 +184,19 @@ function handleError(error: Error): void {
   process.exit(1);
 }
 
-function handleExit() {
-  if (GOD_STATE.latestPackageVersion === null) {
-    return;
-  }
+/**
+ * Before exiting, it compares the latest version of the package that exists
+ * with the current version of the installed package.
+ * If there is a discrepancy it prints some info to the terminal. This function
+ * doesn't really "handle" the "exit" it's more like the "shutdown procedure"
+ */
+async function handleExit() {
+  let latestVersion = await latestPackageVersion;
+  if (latestVersion === null) return;
 
-  const currentVersion = readVersion();
+  const { version: currentVersion } = readPackageInfo();
 
-  if (compareSemver(currentVersion, GOD_STATE.latestPackageVersion) === -1) {
+  if (isOlderVersion(currentVersion, latestVersion)) {
     const sourcePackageManager = existsSync(
       fsPath.join(__dirname, "../homebrew"),
     )
@@ -172,8 +210,8 @@ function handleExit() {
     GOD_STATE.scene = Scene.MESSAGE;
     GOD_STATE.message = GOD_STATE.message.concat([
       "",
-      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(GOD_STATE.latestPackageVersion)}.`,
-      `Changelog: https://github.com/pkitazos/git-jump/releases/tag/v${GOD_STATE.latestPackageVersion}`,
+      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(latestVersion)}.`,
+      `Changelog: https://github.com/pkitazos/git-jump/releases/tag/v${latestVersion}`,
       "",
       `${bold(updateCommand)} to update.`,
     ]);
@@ -225,7 +263,7 @@ function main(args: string[]) {
     // Checking for updates only when interactive UI is started
     // as only then there potentially a chance for update
     // request to finish before git-jump exists
-    checkUpdates();
+    fetchLatestVersion();
     bare();
 
     return;
