@@ -8,7 +8,7 @@ import {
 } from "./storage";
 import { readPackageInfo } from "./system";
 import { InputError, Scene } from "./types";
-import { bold, dim, multilineTextLayout, view } from "./ui";
+import { bold, dim, wrapText, view } from "./ui";
 import { GOD_STATE } from ".";
 
 export function isSubCommand(args: string[]): boolean {
@@ -112,7 +112,7 @@ function helpSubCommand(): void {
   help = help.replace(
     /\{wrap:(\d+)\}(.+)\{\/wrap\}/g,
     (substring, paddingSize, content) => {
-      return multilineTextLayout(
+      return wrapText(
         content.trim(),
         process.stdout.columns - parseInt(paddingSize),
       )

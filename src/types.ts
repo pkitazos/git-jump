@@ -109,13 +109,19 @@ export type LinesWindow = {
   bottomIndex: number;
 };
 
+// each row we render can be broken up into various columns
+// - some will require an index
+// - some will just require displaying a branch name
+// - some will contain an indicator for "more"
+// for (mostly) every line we return a list of columns
+// and then reduce over that list to build a single string corresponding to a row
+
 /**
  * Categorises the different columns displayed in the UI layout.
  */
 export const LayoutColumnVariant = {
   INDEX: "Index",
   BRANCH_NAME: "BranchName",
-  LAST_USED: "LastUsed",
   MORE_INDICATOR: "MoreIndicator",
 } as const;
 

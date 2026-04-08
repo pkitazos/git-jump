@@ -7,13 +7,26 @@ import {
   LayoutColumn,
   LayoutColumnVariant,
   LinesWindow,
-  ListItem,
   ListItemVariant,
   Scene,
   State,
 } from "./types";
 
+type RenderOutput =
+  | {
+      tag: "listInteractive";
+      lines: string[];
+      cursor: { x: number; y: number };
+    }
+  | { tag: "listPlain"; lines: string[] }
+  | { tag: "message"; lines: string[] };
+
 const BRANCH_INDEX_PADD = "   ";
+const LINE_SPACER = "  ";
+
+const ESCAPE_CODE_PATTERN = /\x1b.+?m/gi;
+
+// --- styling
 
 export function dim(s: string): string {
   return `\x1b[2m${s}\x1b[22m`;
@@ -39,29 +52,27 @@ export function red(s: string): string {
   return `\x1b[38;5;1m${s}\x1b[39m`;
 }
 
+// --- string utils
+
 function truncate(s: string, maxWidth: number): string {
-  let truncated = s.slice(0, maxWidth);
-
-  if (truncated.length < s.length) {
-    truncated = `${truncated.substring(0, truncated.length - 1)}…`;
-  }
-
-  return truncated;
+  const truncated = s.slice(0, maxWidth);
+  if (truncated.length >= s.length) return truncated;
+  return `${truncated.substring(0, truncated.length - 1)}…`;
 }
 
-export function multilineTextLayout(text: string, columns: number): string[] {
-  if (text.length === 0) {
-    return [];
-  }
+// this just takes a string and a column width, splits it on spaces, and packs the words back
+// onto lines without going over the width
+// the "sanitizing" is for removing ansi escape codes when measuring
+// length so colors don't count toward the column count
+export function wrapText(text: string, columns: number): string[] {
+  if (text.length === 0) return [];
 
-  const words = text.split(" ");
-  const escapeCodePattern = /\x1b.+?m/gi;
-
-  return words.slice(1).reduce(
+  const [firstWord, ...words] = text.split(" ");
+  return words.reduce(
     (lines, word) => {
       const currentLine = lines[lines.length - 1];
-      const sanitizedCurrentLine = currentLine.replace(escapeCodePattern, "");
-      const sanitizedWord = word.replace(escapeCodePattern, "");
+      const sanitizedCurrentLine = currentLine.replace(ESCAPE_CODE_PATTERN, "");
+      const sanitizedWord = word.replace(ESCAPE_CODE_PATTERN, "");
 
       // +1 at the end is for the space in front of the word
       if (sanitizedCurrentLine.length + sanitizedWord.length + 1 <= columns) {
@@ -72,157 +83,42 @@ export function multilineTextLayout(text: string, columns: number): string[] {
 
       return lines;
     },
-    [words[0]],
+    [firstWord],
   );
 }
 
-/**
- * These properties cannot live in the main
- * app state as they are affected by rendering itself,
- * not by application logic. They are part of a different,
- * more low-level sub-system.
- */
-type RenderState = {
-  cursorY: number;
-};
+// --- layout math
 
-/**
- * The initial state for the rendering engine.
- * Starts tracking the vertical cursor position from the first line to ensure clean terminal redraws.
- */
-const renderState: RenderState = {
-  cursorY: 1,
-};
-
-export function clear() {
-  cursorTo(1, 1);
-
-  // Clear everything after the cursor
-  process.stdout.write(`\x1b[0J`);
-}
-
-/**
- * The primary rendering function.
- * Depending on the active Scene (List or Message), it calculates the required
- * layout math, clears the necessary terminal space, and uses ANSI escape codes
- * to draw the updated type to = standard output.
- * @param state - The current application state.
- */
-export function view(state: State) {
-  switch (state.scene) {
-    case Scene.LIST: {
-      if (!state.isInteractive) {
-        // concat(['']) will add trailing newline
-        render(viewNonInteractiveList(state).concat([""]));
-
-        return;
-      }
-
-      let lines: string[] = [];
-
-      lines.push(viewSearchLine(state));
-      lines = lines.concat(viewList(state));
-
-      clear();
-      render(lines);
-
-      cursorTo(
-        BRANCH_INDEX_PADD.length + state.searchStringCursorPosition + 1,
-        1,
-      );
-
-      break;
-    }
-
-    case Scene.MESSAGE: {
-      clear();
-
-      const lineSpacer = "  ";
-      const lines = [
-        "",
-        ...state.message
-          .reduce((lines: string[], line: string) => {
-            if (line === "") {
-              lines.push("");
-
-              return lines;
-            }
-
-            return lines.concat(
-              multilineTextLayout(
-                line,
-                process.stdout.columns - lineSpacer.length,
-              ),
-            );
-          }, [])
-          .map((line) => lineSpacer + line),
-        "",
-        "",
-      ];
-
-      render(lines);
-
-      break;
-    }
-  }
-}
-
-export function render(lines: string[]) {
-  process.stdout.write(lines.join("\n"));
-
-  // Keep track of the cursor's vertical position
-  // in order to know how many lines to move up
-  // to clean the screen later
-  renderState.cursorY = lines.length;
-}
-
-export function cursorTo(x: number, y: number) {
-  const yDelta = renderState.cursorY - y;
-
-  // Move cursor back to the first line
-  // \x1b[0A will still move one line up, so
-  // do not move in case there is only one line
-  if (yDelta > 0) {
-    process.stdout.write(`\x1b[${yDelta}A`);
-  }
-
-  // There is an escape sequence for moving
-  // cursor horizontally using absolute coordinate,
-  // so no need to use delta here, like for Y
-  process.stdout.write(`\x1b[${x}G`);
-
-  renderState.cursorY = y;
-}
-
-export function calculateLinesWindow(
+// "window" in the sense of which slice of the list is visible on screen
+// given the screen height + total list size + the highlighted line it computes the
+// top/bottom indices for a window centered on the highlighted line
+function calculateLinesWindow(
   rows: number,
   linesCount: number,
   highlightedLineIndex: number,
 ): LinesWindow {
-  const windowSize = rows - 2;
+  const windowSize = rows - 2; // two rows are reserved for something?
   const windowHalf = Math.floor(windowSize / 2);
 
   const topIndex = Math.max(
     0,
     Math.min(linesCount - windowSize, highlightedLineIndex - windowHalf),
   );
+
   const bottomIndex = topIndex + (windowSize - 1);
 
   return { topIndex, bottomIndex };
 }
 
-export function calculateLayout(state: State): LayoutColumn[] {
+function calculateLayout(state: State): LayoutColumn[] {
   const indexColumnWidth = 3;
   const moreIndicatorColumnWidth = 5;
+
   const branchNameColumnWidth = Math.min(
     state.columns - indexColumnWidth - moreIndicatorColumnWidth,
-    Math.max.apply(
-      null,
-      state.branches.map((branch: BranchData) => {
-        return branch.name.length;
-      }),
-    ),
+    Math.max(...state.branches.map((b) => b.name.length)),
   );
+
   const moreIndicatorSpacingWidth =
     state.columns -
     indexColumnWidth -
@@ -239,20 +135,19 @@ export function calculateLayout(state: State): LayoutColumn[] {
   ];
 }
 
-export function highlightLine(
+// --- item formatters + line decorators
+
+function highlightLine(
   line: string,
   lineIndex: number,
   highlightedLineIndex: number,
   selected: boolean = false,
 ) {
-  if (lineIndex === highlightedLineIndex) {
-    return selected ? green(line) : highlight(line);
-  }
-
-  return line;
+  if (lineIndex !== highlightedLineIndex) return line;
+  return selected ? green(line) : highlight(line);
 }
 
-export function addScrollIndicator(
+function addScrollIndicator(
   line: string,
   lineIndex: number,
   listLength: number,
@@ -260,19 +155,17 @@ export function addScrollIndicator(
   layout: LayoutColumn[],
 ): string {
   if (
-    lineIndex === listWindow.bottomIndex &&
-    listWindow.bottomIndex < listLength - 1
+    lineIndex !== listWindow.bottomIndex ||
+    listWindow.bottomIndex >= listLength - 1
   ) {
-    return line + dim("   ↓ ".padStart(layout[layout.length - 1].width, " "));
+    return line;
   }
 
-  return line;
+  return line + dim("   ↓ ".padStart(layout[layout.length - 1].width, " "));
 }
 
-export function viewCurrentHEAD(
-  currentHEAD: CurrentHEAD,
-  layout: LayoutColumn[],
-): string {
+// builds the HEAD row as a single string using the list of layout columns computed in a previous step
+function formatHEAD(currentHEAD: CurrentHEAD, layout: LayoutColumn[]): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
     if (column.type === LayoutColumnVariant.INDEX) {
       return line + BRANCH_INDEX_PADD;
@@ -290,7 +183,9 @@ export function viewCurrentHEAD(
   }, "");
 }
 
-export function viewBranch(
+// like formatHEAD but the index column shows the quick-select number (only for 0-9, otherwise blank padding)
+// and the branch name gets truncated/padded to fit the column width.
+function formatBranch(
   branch: BranchData,
   index: number,
   layout: LayoutColumn[],
@@ -312,33 +207,55 @@ export function viewBranch(
   }, "");
 }
 
-export function viewListLines(state: State, layout: LayoutColumn[]): string[] {
+function formatQuickSelectHint(maxIndex: number, columnWidth: number): string {
+  const trailingIndex = maxIndex > 0 ? `..${maxIndex}` : "";
+  const modifierKey = os.type() === "Darwin" ? "⌥" : "Alt";
+
+  return dim(
+    `${modifierKey}+0${trailingIndex} quick select `.padStart(columnWidth, " "),
+  );
+}
+
+const SEARCH_PLACEHOLDER = "Search";
+// TODO: if the search string ever overflowed the width we'd want to truncate from the
+// FRONT and follow the cursor like a sliding window, but realistically branch name
+// searches are never gonna get that long.
+function formatSearchField(state: State, width: number): string {
+  return state.searchString === ""
+    ? dim(SEARCH_PLACEHOLDER.padEnd(width, " "))
+    : truncate(state.searchString, width).padEnd(width, " ");
+}
+
+// --- section builders
+
+function buildListLines(state: State, layout: LayoutColumn[]): string[] {
+  // we track quickSelectIndex separately instead of using the map callback's index because HEAD doesn't take an index
   let quickSelectIndex = -1;
 
-  return state.list.map((line: ListItem) => {
+  return state.list.map((line) => {
     switch (line.type) {
       case ListItemVariant.HEAD: {
-        return viewCurrentHEAD(line.content, layout);
+        return formatHEAD(line.content, layout);
       }
 
       case ListItemVariant.BRANCH: {
         quickSelectIndex++;
 
-        return viewBranch(line.content, quickSelectIndex, layout);
+        return formatBranch(line.content, quickSelectIndex, layout);
       }
     }
   });
 }
 
-export function viewNonInteractiveList(state: State): string[] {
+function buildPlainList(state: State): string[] {
   const layout = [
     { type: LayoutColumnVariant.BRANCH_NAME, width: state.columns },
   ];
 
-  return viewListLines(state, layout);
+  return buildListLines(state, layout);
 }
 
-export function viewList(state: State): string[] {
+function buildInteractiveList(state: State): string[] {
   if (state.list.length === 0) {
     return [`${BRANCH_INDEX_PADD}${dim("No such branches")}`];
   }
@@ -350,7 +267,7 @@ export function viewList(state: State): string[] {
     state.highlightedLineIndex,
   );
 
-  return viewListLines(state, layout)
+  return buildListLines(state, layout)
     .map((line, index) => {
       return addScrollIndicator(
         highlightLine(line, index, state.highlightedLineIndex),
@@ -363,35 +280,18 @@ export function viewList(state: State): string[] {
     .slice(listWindow.topIndex, listWindow.bottomIndex + 1);
 }
 
-export function viewQuickSelectHint(
-  maxIndex: number,
-  columnWidth: number,
-): string {
-  const trailingIndex = maxIndex > 0 ? `..${maxIndex}` : "";
-  const modifierKey = os.type() === "Darwin" ? "⌥" : "Alt";
-
-  return dim(
-    `${modifierKey}+0${trailingIndex} quick select `.padStart(columnWidth, " "),
-  );
-}
-
-export function viewSearch(state: State, width: number): string {
-  const SEARCH_PLACEHOLDER = "Search";
-
-  return state.searchString === ""
-    ? dim(SEARCH_PLACEHOLDER.padEnd(width, " "))
-    : truncate(state.searchString, width).padEnd(width, " ");
-}
-
-export function viewSearchLine(state: State): string {
-  const searchPlaceholderWidth = 6;
+// builds the top line of the interactive view: index padding + search input field, plus
+// a quick-select hint ("⌥+0..N quick select") on the right side IF there's enough room
+// AND there are branches you can actually quick-select. otherwise the hint is dropped.
+// the search field grows with the search string up to the available width.
+function buildSearchLine(state: State): string {
   const searchWidth = Math.min(
     state.columns - BRANCH_INDEX_PADD.length,
-    Math.max(state.searchString.length, searchPlaceholderWidth),
+    Math.max(state.searchString.length, SEARCH_PLACEHOLDER.length),
   );
   const hintMinWidth = 25;
 
-  let line = BRANCH_INDEX_PADD + viewSearch(state, searchWidth);
+  let line = BRANCH_INDEX_PADD + formatSearchField(state, searchWidth);
   const hintColumnWidth =
     state.columns - (BRANCH_INDEX_PADD.length + searchWidth);
 
@@ -405,7 +305,120 @@ export function viewSearchLine(state: State): string {
     return line;
   }
 
-  line += viewQuickSelectHint(quickSelectLines.length - 1, hintColumnWidth);
+  line += formatQuickSelectHint(quickSelectLines.length - 1, hintColumnWidth);
 
   return line;
+}
+
+// --- the main public-facing API
+
+// this is the top-level dispatch which depending on the "scene" builds the lines and writes them to stdout
+//
+// LIST has two variants:
+// - non-interactive just dumps the list to stdout (for piping or whatever)
+// - interactive clears the screen, renders the search line + the windowed list, and moves the cursor to the search input.
+// MESSAGE clears the screen and renders the message lines
+//
+// currently still contains side-effects so idk what the best name would be - leaving
+// as `view` until the pure/effectful split happens.
+export function view(state: State) {
+  switch (state.scene) {
+    case Scene.LIST: {
+      if (!state.isInteractive) {
+        // concat(['']) will add trailing newline
+        write(buildPlainList(state).concat([""]));
+
+        return;
+      }
+
+      let lines: string[] = [];
+
+      lines.push(buildSearchLine(state));
+      lines = lines.concat(buildInteractiveList(state));
+
+      clear();
+      write(lines);
+
+      cursorTo(
+        BRANCH_INDEX_PADD.length + state.searchStringCursorPosition + 1,
+        1,
+      );
+
+      break;
+    }
+
+    case Scene.MESSAGE: {
+      clear();
+
+      const lines = [
+        "",
+        ...state.message
+          .reduce((lines: string[], line: string) => {
+            if (line === "") {
+              lines.push("");
+
+              return lines;
+            }
+            return lines.concat(
+              wrapText(line, state.columns - LINE_SPACER.length),
+            );
+          }, [])
+          .map((line) => LINE_SPACER + line),
+        "",
+        "",
+      ];
+
+      write(lines);
+
+      break;
+    }
+  }
+}
+
+// --- terminal writer
+
+/**
+ * These properties cannot live in the main
+ * app state as they are affected by rendering itself,
+ * not by application logic. They are part of a different,
+ * more low-level sub-system.
+ */
+type RenderState = { cursorY: number };
+
+/**
+ * The initial state for the rendering engine.
+ * Starts tracking the vertical cursor position from the first line to ensure clean terminal redraws.
+ */
+const writerState: RenderState = { cursorY: 1 };
+
+export function clear() {
+  cursorTo(1, 1);
+
+  // Clear everything after the cursor
+  process.stdout.write(`\x1b[0J`);
+}
+
+function write(lines: string[]) {
+  process.stdout.write(lines.join("\n"));
+
+  // Keep track of the cursor's vertical position
+  // in order to know how many lines to move up
+  // to clean the screen later
+  writerState.cursorY = lines.length;
+}
+
+function cursorTo(x: number, y: number) {
+  const yDelta = writerState.cursorY - y;
+
+  // Move cursor back to the first line
+  // \x1b[0A will still move one line up, so
+  // do not move in case there is only one line
+  if (yDelta > 0) process.stdout.write(`\x1b[${yDelta}A`);
+
+  // There is an escape sequence for moving
+  // cursor horizontally using absolute coordinate,
+  // so no need to use delta here, like for Y
+  process.stdout.write(`\x1b[${x}G`);
+
+  writerState.cursorY = y;
 }
