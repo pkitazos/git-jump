@@ -1,5 +1,3 @@
-import * as os from "os";
-
 import { getQuickSelectLines } from "./list";
 import {
   BranchData,
@@ -7,19 +5,13 @@ import {
   LayoutColumn,
   LayoutColumnVariant,
   LinesWindow,
+  ListItem,
   ListItemVariant,
+  RenderOutput,
   Scene,
   State,
 } from "./types";
-
-type RenderOutput =
-  | {
-      tag: "listInteractive";
-      lines: string[];
-      cursor: { x: number; y: number };
-    }
-  | { tag: "listPlain"; lines: string[] }
-  | { tag: "message"; lines: string[] };
+import { clamp, match } from "./utils";
 
 const BRANCH_INDEX_PADD = "   ";
 const LINE_SPACER = "  ";
@@ -68,23 +60,24 @@ export function wrapText(text: string, columns: number): string[] {
   if (text.length === 0) return [];
 
   const [firstWord, ...words] = text.split(" ");
-  return words.reduce(
-    (lines, word) => {
-      const currentLine = lines[lines.length - 1];
-      const sanitizedCurrentLine = currentLine.replace(ESCAPE_CODE_PATTERN, "");
-      const sanitizedWord = word.replace(ESCAPE_CODE_PATTERN, "");
 
-      // +1 at the end is for the space in front of the word
-      if (sanitizedCurrentLine.length + sanitizedWord.length + 1 <= columns) {
-        lines[lines.length - 1] = currentLine + " " + word;
-      } else {
-        lines.push(word);
-      }
+  return words
+    .reduce(
+      ([currLine, ...restLines], word) => {
+        const sanitizedWord = word.replace(ESCAPE_CODE_PATTERN, "");
+        const sanitizedCurrLine = currLine.replace(ESCAPE_CODE_PATTERN, "");
 
-      return lines;
-    },
-    [firstWord],
-  );
+        const potentialLineLen =
+          // +1 at the end is for the space in front of the word
+          sanitizedCurrLine.length + sanitizedWord.length + 1;
+
+        return potentialLineLen > columns
+          ? [word, currLine, ...restLines]
+          : [currLine + " " + word, ...restLines];
+      },
+      [firstWord],
+    )
+    .reverse();
 }
 
 // --- layout math
@@ -96,42 +89,49 @@ function calculateLinesWindow(
   rows: number,
   linesCount: number,
   highlightedLineIndex: number,
+  reservedRows: number = 2,
 ): LinesWindow {
-  const windowSize = rows - 2; // two rows are reserved for something?
+  if (linesCount === 0) return { topIndex: 0, bottomIndex: 0 };
+
+  const windowSize = Math.max(1, rows - reservedRows);
   const windowHalf = Math.floor(windowSize / 2);
 
-  const topIndex = Math.max(
+  const topIndex = clamp(
+    highlightedLineIndex - windowHalf,
     0,
-    Math.min(linesCount - windowSize, highlightedLineIndex - windowHalf),
+    linesCount - windowSize,
   );
 
-  const bottomIndex = topIndex + (windowSize - 1);
+  const bottomIndex = Math.min(topIndex + windowSize - 1, linesCount - 1);
 
   return { topIndex, bottomIndex };
 }
 
-function calculateLayout(state: State): LayoutColumn[] {
+function calculateInteractiveLayout(
+  terminalColumns: number,
+  branches: BranchData[],
+): LayoutColumn[] {
   const indexColumnWidth = 3;
   const moreIndicatorColumnWidth = 5;
 
-  const branchNameColumnWidth = Math.min(
-    state.columns - indexColumnWidth - moreIndicatorColumnWidth,
-    Math.max(...state.branches.map((b) => b.name.length)),
+  const maxBranchLength =
+    branches.length > 0 ? Math.max(...branches.map((b) => b.name.length)) : 0;
+
+  const branchNameColumnWidth = clamp(
+    terminalColumns - indexColumnWidth - moreIndicatorColumnWidth,
+    0,
+    maxBranchLength,
   );
 
-  const moreIndicatorSpacingWidth =
-    state.columns -
-    indexColumnWidth -
-    branchNameColumnWidth -
-    moreIndicatorColumnWidth;
+  const remainingWidth = Math.max(
+    0,
+    terminalColumns - indexColumnWidth - branchNameColumnWidth,
+  );
 
   return [
     { type: LayoutColumnVariant.INDEX, width: indexColumnWidth },
     { type: LayoutColumnVariant.BRANCH_NAME, width: branchNameColumnWidth },
-    {
-      type: LayoutColumnVariant.MORE_INDICATOR,
-      width: moreIndicatorSpacingWidth + moreIndicatorColumnWidth,
-    },
+    { type: LayoutColumnVariant.MORE_INDICATOR, width: remainingWidth },
   ];
 }
 
@@ -166,50 +166,52 @@ function addScrollIndicator(
 
 // builds the HEAD row as a single string using the list of layout columns computed in a previous step
 function formatHEAD(currentHEAD: CurrentHEAD, layout: LayoutColumn[]): string {
-  return layout.reduce((line: string, column: LayoutColumn) => {
-    if (column.type === LayoutColumnVariant.INDEX) {
-      return line + BRANCH_INDEX_PADD;
-    }
+  return layout
+    .map((column: LayoutColumn) =>
+      match(column, "type", {
+        [LayoutColumnVariant.INDEX]: () => BRANCH_INDEX_PADD,
 
-    if (column.type === LayoutColumnVariant.BRANCH_NAME) {
-      const branch = currentHEAD.detached
-        ? `${bold(currentHEAD.sha)} ${dim("(detached)")}`
-        : bold(currentHEAD.branchName);
+        [LayoutColumnVariant.BRANCH_NAME]: () => {
+          return currentHEAD.detached
+            ? `${bold(currentHEAD.sha)} ${dim("(detached)")}`
+            : bold(currentHEAD.branchName);
+        },
 
-      return line + branch;
-    }
-
-    return line;
-  }, "");
+        [LayoutColumnVariant.MORE_INDICATOR]: () => "",
+      }),
+    )
+    .join("");
 }
 
 // like formatHEAD but the index column shows the quick-select number (only for 0-9, otherwise blank padding)
 // and the branch name gets truncated/padded to fit the column width.
 function formatBranch(
   branch: BranchData,
-  index: number,
   layout: LayoutColumn[],
+  index: number,
 ): string {
-  return layout.reduce((line: string, column: LayoutColumn) => {
-    if (column.type === LayoutColumnVariant.INDEX) {
-      return (
-        line + (index < 10 ? ` ${dim(index.toString())} ` : BRANCH_INDEX_PADD)
-      );
-    }
+  return layout
+    .map((column) =>
+      match(column, "type", {
+        [LayoutColumnVariant.INDEX]: () =>
+          index < 10 ? ` ${dim(index.toString())} ` : BRANCH_INDEX_PADD,
 
-    if (column.type === LayoutColumnVariant.BRANCH_NAME) {
-      return (
-        line + truncate(branch.name, column.width).padEnd(column.width, " ")
-      );
-    }
+        [LayoutColumnVariant.BRANCH_NAME]: () =>
+          truncate(branch.name, column.width).padEnd(column.width, " "),
 
-    return line;
-  }, "");
+        [LayoutColumnVariant.MORE_INDICATOR]: () => "",
+      }),
+    )
+    .join("");
 }
 
-function formatQuickSelectHint(maxIndex: number, columnWidth: number): string {
+function formatQuickSelectHint(
+  maxIndex: number,
+  columnWidth: number,
+  isMac: boolean,
+): string {
   const trailingIndex = maxIndex > 0 ? `..${maxIndex}` : "";
-  const modifierKey = os.type() === "Darwin" ? "⌥" : "Alt";
+  const modifierKey = isMac ? "⌥" : "Alt";
 
   return dim(
     `${modifierKey}+0${trailingIndex} quick select `.padStart(columnWidth, " "),
@@ -220,159 +222,169 @@ const SEARCH_PLACEHOLDER = "Search";
 // TODO: if the search string ever overflowed the width we'd want to truncate from the
 // FRONT and follow the cursor like a sliding window, but realistically branch name
 // searches are never gonna get that long.
-function formatSearchField(state: State, width: number): string {
-  return state.searchString === ""
+function formatSearchField(searchString: string, width: number): string {
+  return searchString === ""
     ? dim(SEARCH_PLACEHOLDER.padEnd(width, " "))
-    : truncate(state.searchString, width).padEnd(width, " ");
+    : truncate(searchString, width).padEnd(width, " ");
 }
 
 // --- section builders
 
-function buildListLines(state: State, layout: LayoutColumn[]): string[] {
+function buildListLines(list: ListItem[], layout: LayoutColumn[]): string[] {
   // we track quickSelectIndex separately instead of using the map callback's index because HEAD doesn't take an index
   let quickSelectIndex = -1;
 
-  return state.list.map((line) => {
-    switch (line.type) {
-      case ListItemVariant.HEAD: {
-        return formatHEAD(line.content, layout);
-      }
+  return list.map((line) =>
+    match(line, "type", {
+      [ListItemVariant.HEAD]: (line) => formatHEAD(line.content, layout),
 
-      case ListItemVariant.BRANCH: {
+      [ListItemVariant.BRANCH]: (line) => {
         quickSelectIndex++;
-
-        return formatBranch(line.content, quickSelectIndex, layout);
-      }
-    }
-  });
+        return formatBranch(line.content, layout, quickSelectIndex);
+      },
+    }),
+  );
 }
 
-function buildPlainList(state: State): string[] {
-  const layout = [
-    { type: LayoutColumnVariant.BRANCH_NAME, width: state.columns },
-  ];
-
-  return buildListLines(state, layout);
+function buildPlainList(list: ListItem[], columns: number): string[] {
+  return buildListLines(list, [
+    { type: LayoutColumnVariant.BRANCH_NAME, width: columns },
+  ]);
 }
 
-function buildInteractiveList(state: State): string[] {
-  if (state.list.length === 0) {
+function buildInteractiveList(
+  list: ListItem[],
+  branches: BranchData[],
+  columns: number,
+  rows: number,
+  highlightedLineIndex: number,
+): string[] {
+  const listLength = list.length;
+
+  if (listLength === 0) {
     return [`${BRANCH_INDEX_PADD}${dim("No such branches")}`];
   }
 
-  const layout = calculateLayout(state);
+  const layout = calculateInteractiveLayout(columns, branches);
   const listWindow = calculateLinesWindow(
-    state.rows,
-    state.list.length,
-    state.highlightedLineIndex,
+    rows,
+    listLength,
+    highlightedLineIndex,
   );
 
-  return buildListLines(state, layout)
-    .map((line, index) => {
-      return addScrollIndicator(
-        highlightLine(line, index, state.highlightedLineIndex),
+  return buildListLines(list, layout)
+    .slice(listWindow.topIndex, listWindow.bottomIndex + 1)
+    .map((line, index) =>
+      addScrollIndicator(
+        highlightLine(line, index, highlightedLineIndex),
         index,
-        state.list.length,
+        listLength,
         listWindow,
         layout,
-      );
-    })
-    .slice(listWindow.topIndex, listWindow.bottomIndex + 1);
+      ),
+    );
 }
 
 // builds the top line of the interactive view: index padding + search input field, plus
 // a quick-select hint ("⌥+0..N quick select") on the right side IF there's enough room
 // AND there are branches you can actually quick-select. otherwise the hint is dropped.
 // the search field grows with the search string up to the available width.
-function buildSearchLine(state: State): string {
-  const searchWidth = Math.min(
-    state.columns - BRANCH_INDEX_PADD.length,
-    Math.max(state.searchString.length, SEARCH_PLACEHOLDER.length),
+function buildSearchLine(
+  searchString: string,
+  list: ListItem[],
+  columns: number,
+  isMac: boolean,
+): string {
+  const HINT_MIN_WIDTH = 25;
+
+  const searchWidth = clamp(
+    searchString.length,
+    SEARCH_PLACEHOLDER.length,
+    columns - BRANCH_INDEX_PADD.length,
   );
-  const hintMinWidth = 25;
 
-  let line = BRANCH_INDEX_PADD + formatSearchField(state, searchWidth);
-  const hintColumnWidth =
-    state.columns - (BRANCH_INDEX_PADD.length + searchWidth);
+  const baseLine =
+    BRANCH_INDEX_PADD + formatSearchField(searchString, searchWidth);
 
-  if (hintColumnWidth < hintMinWidth) {
-    return line;
-  }
+  const hintColumnWidth = columns - (BRANCH_INDEX_PADD.length + searchWidth);
 
-  const quickSelectLines = getQuickSelectLines(state.list);
+  if (hintColumnWidth < HINT_MIN_WIDTH) return baseLine;
 
-  if (quickSelectLines.length === 0) {
-    return line;
-  }
+  const quickSelectLines = getQuickSelectLines(list);
+  if (quickSelectLines.length === 0) return baseLine;
 
-  line += formatQuickSelectHint(quickSelectLines.length - 1, hintColumnWidth);
+  const hint = formatQuickSelectHint(
+    quickSelectLines.length - 1,
+    hintColumnWidth,
+    isMac,
+  );
 
-  return line;
+  return baseLine + hint;
 }
 
 // --- the main public-facing API
 
-// this is the top-level dispatch which depending on the "scene" builds the lines and writes them to stdout
-//
-// LIST has two variants:
-// - non-interactive just dumps the list to stdout (for piping or whatever)
-// - interactive clears the screen, renders the search line + the windowed list, and moves the cursor to the search input.
-// MESSAGE clears the screen and renders the message lines
-//
-// currently still contains side-effects so idk what the best name would be - leaving
-// as `view` until the pure/effectful split happens.
-export function view(state: State) {
-  switch (state.scene) {
-    case Scene.LIST: {
-      if (!state.isInteractive) {
-        // concat(['']) will add trailing newline
-        write(buildPlainList(state).concat([""]));
+/**
+ * Takes the current application state and produces a pure, declarative description of the UI.
+ * We do this by looking at the active "scene" and constructing a `RenderOutput`
+ * object containing the exact lines to be drawn, along with any necessary
+ * terminal cursor positioning metadata.
+ *
+ * - LIST (Interactive): Computes the search bar, windowed list layout, and cursor coordinates.
+ * - LIST (Plain): Computes a raw string dump of branches (used when piping to other commands).
+ * - MESSAGE: Computes a padded, text-wrapped message block.
+ */
+export function buildView(state: State): RenderOutput {
+  return match(state, "scene", {
+    [Scene.MESSAGE]: () => {
+      const wrappedLines = state.message
+        .flatMap((line) =>
+          line === ""
+            ? [""]
+            : wrapText(line, state.columns - LINE_SPACER.length),
+        )
+        .map((line) => LINE_SPACER + line);
 
-        return;
+      return {
+        tag: "message",
+        lines: ["", ...wrappedLines, "", ""],
+      } satisfies RenderOutput;
+    },
+
+    [Scene.LIST]: () => {
+      if (!state.isInteractive) {
+        const plainLines = buildPlainList(state.list, state.columns);
+        return {
+          tag: "listPlain",
+          lines: [...plainLines, ""],
+        } satisfies RenderOutput;
       }
 
-      let lines: string[] = [];
-
-      lines.push(buildSearchLine(state));
-      lines = lines.concat(buildInteractiveList(state));
-
-      clear();
-      write(lines);
-
-      cursorTo(
-        BRANCH_INDEX_PADD.length + state.searchStringCursorPosition + 1,
-        1,
+      const searchLine = buildSearchLine(
+        state.searchString,
+        state.list,
+        state.columns,
+        state.isMac,
       );
 
-      break;
-    }
+      const interactiveList = buildInteractiveList(
+        state.list,
+        state.branches,
+        state.columns,
+        state.rows,
+        state.highlightedLineIndex,
+      );
 
-    case Scene.MESSAGE: {
-      clear();
+      const xPos =
+        BRANCH_INDEX_PADD.length + state.searchStringCursorPosition + 1;
 
-      const lines = [
-        "",
-        ...state.message
-          .reduce((lines: string[], line: string) => {
-            if (line === "") {
-              lines.push("");
-
-              return lines;
-            }
-            return lines.concat(
-              wrapText(line, state.columns - LINE_SPACER.length),
-            );
-          }, [])
-          .map((line) => LINE_SPACER + line),
-        "",
-        "",
-      ];
-
-      write(lines);
-
-      break;
-    }
-  }
+      return {
+        tag: "listInteractive",
+        lines: [searchLine, ...interactiveList],
+        cursor: { x: xPos, y: 1 },
+      } satisfies RenderOutput;
+    },
+  });
 }
 
 // --- terminal writer

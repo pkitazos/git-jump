@@ -1,6 +1,7 @@
 export type AppConfig = {
   gitRepoFolder: string;
   isInteractive: boolean;
+  isMac: boolean;
   rows: number;
   columns: number;
   maxRows: number;
@@ -104,10 +105,7 @@ export type TScene = (typeof Scene)[keyof typeof Scene];
  * Defines the visible window of list items to render.
  * Used to calculate which slice of the total list should be displayed based on terminal height.
  */
-export type LinesWindow = {
-  topIndex: number;
-  bottomIndex: number;
-};
+export type LinesWindow = { topIndex: number; bottomIndex: number };
 
 // each row we render can be broken up into various columns
 // - some will require an index
@@ -136,6 +134,15 @@ export type LayoutColumn = {
   type: TLayoutColumnVariant;
   width: number;
 };
+
+export type RenderOutput =
+  | {
+      tag: "listInteractive";
+      lines: string[];
+      cursor: { x: number; y: number };
+    }
+  | { tag: "listPlain"; lines: string[] }
+  | { tag: "message"; lines: string[] };
 
 export type GitCommandResult = {
   status: number;

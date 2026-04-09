@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import * as fsPath from "path";
+import { GOD_STATE } from ".";
 import { gitCommand, gitSwitch } from "./git";
 import {
   deleteJumpDataBranch,
@@ -8,8 +9,7 @@ import {
 } from "./storage";
 import { readPackageInfo } from "./system";
 import { InputError, Scene } from "./types";
-import { bold, dim, wrapText, view } from "./ui";
-import { GOD_STATE } from ".";
+import { bold, buildView, dim, wrapText } from "./ui";
 
 export function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
@@ -80,7 +80,7 @@ function versionSubCommand() {
 function listSubCommand(): void {
   GOD_STATE.isInteractive = false;
 
-  view(GOD_STATE);
+  buildView(GOD_STATE);
 
   process.exit(0);
 }
@@ -95,7 +95,7 @@ function newSubCommand(args: string[]): void {
     updateBranchLastSwitch(args[0], Date.now(), GOD_STATE);
   }
 
-  view(GOD_STATE);
+  buildView(GOD_STATE);
 
   process.exit(status);
 }
@@ -153,7 +153,7 @@ function renameSubCommand(args: string[]): void {
     GOD_STATE.message.push("Renamed.");
   }
 
-  view(GOD_STATE);
+  buildView(GOD_STATE);
 
   process.exit(status);
 }
@@ -168,7 +168,7 @@ function deleteSubCommand(args: string[]): void {
     deleteJumpDataBranch(args, GOD_STATE);
   }
 
-  view(GOD_STATE);
+  buildView(GOD_STATE);
 
   process.exit(status);
 }
