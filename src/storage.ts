@@ -1,86 +1,76 @@
 import { readFileSync, writeFileSync } from "fs";
 import * as fsPath from "path";
 import { DATA_FILE_PATH } from "./constants";
-import { readRawGitBranches } from "./git";
-import { BranchData, BranchDataCollection, State } from "./types";
+import { BranchData, BranchDataCollection } from "./types";
+
+// --- adapters
+
 /**
- * Reconciles the actual Git branches with the historical usage data.
- * It reads the raw Git branches, cross-references them with the timestamps stored
- * in `.jump/data.json`, cleans up any stale data (deleted branches), and returns
- * the combined dataset.
- * @param gitRepoFolder - The absolute path to the root of the Git repository.
- * @returns An array of BranchData combining Git state with usage history.
+ * Reads jump data from disk, cleans up stale branches, saves the cleaned data
+ * back to disk, and returns the reconciled branch list.
  */
-export function readBranchesData(gitRepoFolder: string): BranchData[] {
-  const rawGitBranches = readRawGitBranches();
-  const branchesJumpData = readBranchesJumpData(gitRepoFolder);
+export function getAndCleanBranchData(
+  rawGitBranches: string[],
+  gitRepoFolder: string,
+): BranchData[] {
+  const jumpData = readBranchesJumpData(gitRepoFolder);
 
-  cleanUpJumpData(gitRepoFolder, branchesJumpData, rawGitBranches);
+  const cleanJumpData = filterStaleJumpData(rawGitBranches, jumpData);
+  const reconciledBranches = reconcileBranches(rawGitBranches, cleanJumpData);
 
-  return rawGitBranches.map((branch) => {
-    const jumpData = branchesJumpData[branch];
+  saveBranchesJumpData(gitRepoFolder, cleanJumpData);
 
-    return {
-      name: branch,
-      lastSwitch: jumpData !== undefined ? jumpData.lastSwitch : 0,
-    };
-  });
+  return reconciledBranches;
 }
 
 /**
- * Updates the timestamp for a specific branch in the `.jump/data.json` file.
- * This is called immediately after a successful branch switch to ensure the
- * "recently used" sorting remains accurate.
- * @param name - The name of the branch to update.
- * @param lastSwitch - The current timestamp (e.g., Date.now()).
- * @param state - The current application state.
+ * Reads the historical data from disk, updates the timestamp in memory,
+ * and immediately flushes the changes back to `.jump/data.json`.
  */
 export function updateBranchLastSwitch(
   name: string,
   lastSwitch: number,
-  state: State,
+  gitRepoFolder: string,
 ): void {
-  const jumpData = readBranchesJumpData(state.gitRepoFolder);
+  const jumpData = readBranchesJumpData(gitRepoFolder);
 
-  jumpData[name] = { name, lastSwitch };
+  const updatedData = setBranchTimestamp(jumpData, name, lastSwitch);
 
-  saveBranchesJumpData(state.gitRepoFolder, jumpData);
+  saveBranchesJumpData(gitRepoFolder, updatedData);
 }
 
+/**
+ * Reads the current data from disk, applies the pure rename transformation,
+ * and safely writes the updated history back to `.jump/data.json`.
+ */
 export function renameJumpDataBranch(
   currentName: string,
   newName: string,
-  state: State,
+  gitRepoFolder: string,
 ): void {
-  const jumpData = readBranchesJumpData(state.gitRepoFolder);
-  const currentJumpData = jumpData[currentName];
+  const jumpData = readBranchesJumpData(gitRepoFolder);
 
-  if (currentJumpData === undefined) {
-    return;
-  }
+  const updatedData = renameBranch(jumpData, currentName, newName);
 
-  jumpData[newName] = { ...currentJumpData, name: newName };
-  delete jumpData[currentName];
-
-  saveBranchesJumpData(state.gitRepoFolder, jumpData);
+  saveBranchesJumpData(gitRepoFolder, updatedData);
 }
 
+/**
+ * Reads the current data from disk, filters out the specified branches,
+ * and writes the clean data back to `.jump/data.json`.
+ */
 export function deleteJumpDataBranch(
   branchNames: string[],
-  state: State,
+  gitRepoFolder: string,
 ): void {
-  const jumpData = readBranchesJumpData(state.gitRepoFolder);
+  const jumpData = readBranchesJumpData(gitRepoFolder);
 
-  branchNames.forEach((name) => {
-    if (jumpData[name] === undefined) {
-      return;
-    }
+  const updatedData = deleteBranches(jumpData, branchNames);
 
-    delete jumpData[name];
-  });
-
-  saveBranchesJumpData(state.gitRepoFolder, jumpData);
+  saveBranchesJumpData(gitRepoFolder, updatedData);
 }
+
+// --- actual file I/O
 
 function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
   try {
@@ -108,25 +98,59 @@ function saveBranchesJumpData(
   }
 }
 
-/**
- * Cleans up branches that do not exists in Git already
- * but still present in jump data.
- */
-function cleanUpJumpData(
-  gitRepoFolder: string,
-  jumpData: BranchDataCollection,
+// --- pure utils
+
+function reconcileBranches(
   rawGitBranches: string[],
-): void {
-  const cleanJumpData = Object.keys(jumpData).reduce(
-    (cleanData, jumpDataBranchName) => {
-      if (rawGitBranches.includes(jumpDataBranchName)) {
-        cleanData[jumpDataBranchName] = jumpData[jumpDataBranchName];
-      }
+  jumpData: BranchDataCollection,
+): BranchData[] {
+  return rawGitBranches.map((branch) => ({
+    name: branch,
+    lastSwitch: jumpData[branch]?.lastSwitch ?? 0,
+  }));
+}
 
-      return cleanData;
-    },
-    {} as BranchDataCollection,
+function filterStaleJumpData(
+  rawGitBranches: string[],
+  jumpData: BranchDataCollection,
+): BranchDataCollection {
+  return Object.fromEntries(
+    Object.entries(jumpData).filter(([b, _]) => rawGitBranches.includes(b)),
   );
+}
 
-  saveBranchesJumpData(gitRepoFolder, cleanJumpData);
+function setBranchTimestamp(
+  jumpData: BranchDataCollection,
+  name: string,
+  lastSwitch: number,
+): BranchDataCollection {
+  return {
+    ...jumpData,
+    [name]: { name, lastSwitch },
+  };
+}
+
+function renameBranch(
+  jumpData: BranchDataCollection,
+  currentName: string,
+  newName: string,
+): BranchDataCollection {
+  const currentJumpData = jumpData[currentName];
+  if (!currentJumpData) return jumpData;
+
+  const { [currentName]: _removed, ...rest } = jumpData;
+
+  return {
+    ...rest,
+    [newName]: { ...currentJumpData, name: newName },
+  };
+}
+
+function deleteBranches(
+  jumpData: BranchDataCollection,
+  branchesToDelete: string[],
+): BranchDataCollection {
+  return Object.fromEntries(
+    Object.entries(jumpData).filter(([b, _]) => !branchesToDelete.includes(b)),
+  );
 }
