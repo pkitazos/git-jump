@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
+import * as os from "os";
 import * as fsPath from "path";
 
 import { executeSubCommand, isSubCommand } from "./command";
@@ -15,7 +16,7 @@ import {
   readPackageInfo,
 } from "./system";
 import { InputError, ListItem, ListItemVariant, Scene, State } from "./types";
-import { bold, clear, green, red, view, yellow } from "./ui";
+import { bold, buildView, clear, green, red, yellow } from "./ui";
 
 /**
  * The initial application state instantiated on startup.
@@ -25,6 +26,7 @@ import { bold, clear, green, red, view, yellow } from "./ui";
 export const GOD_STATE: State = {
   rows: process.stdout.rows,
   columns: process.stdout.columns,
+  isMac: os.type() === "Darwin",
   maxRows: process.stdout.rows,
   highlightedLineIndex: 0,
   branches: [],
@@ -52,7 +54,7 @@ export function switchToListItem(item: ListItem): void {
   if (item.type === ListItemVariant.HEAD) {
     GOD_STATE.scene = Scene.MESSAGE;
     GOD_STATE.message = [`Staying on ${bold(branchName)}`];
-    view(GOD_STATE);
+    buildView(GOD_STATE);
 
     process.exit(0);
   }
@@ -62,7 +64,7 @@ export function switchToListItem(item: ListItem): void {
   GOD_STATE.scene = Scene.MESSAGE;
   GOD_STATE.message = message;
 
-  view(GOD_STATE);
+  buildView(GOD_STATE);
 
   process.exit(status);
 }
@@ -73,7 +75,7 @@ export function switchToListItem(item: ListItem): void {
  * and begins listening to and parsing a continuous stream of keyboard inputs.
  */
 function bare() {
-  view(GOD_STATE);
+  buildView(GOD_STATE);
 
   if (!GOD_STATE.isInteractive) {
     process.exit(0);
@@ -94,7 +96,7 @@ function bare() {
         case "stateUpdate":
           // can clean this up later
           Object.assign(GOD_STATE, result.state);
-          view(GOD_STATE);
+          buildView(GOD_STATE);
           break;
 
         case "switchTo":
@@ -123,7 +125,7 @@ function jumpTo(args: string[]) {
     GOD_STATE.scene = Scene.MESSAGE;
     GOD_STATE.message = switchResult.message;
 
-    view(GOD_STATE);
+    buildView(GOD_STATE);
 
     process.exit(0);
   }
@@ -142,7 +144,7 @@ function jumpTo(args: string[]) {
       `${bold(yellow(GOD_STATE.searchString))} does not match any branch`,
     ];
 
-    view(GOD_STATE);
+    buildView(GOD_STATE);
 
     process.exit(1);
   }
@@ -165,7 +167,7 @@ function handleError(error: Error): void {
   }
 
   GOD_STATE.scene = Scene.MESSAGE;
-  view(GOD_STATE);
+  buildView(GOD_STATE);
   process.exit(1);
 }
 
@@ -201,7 +203,7 @@ async function handleExit() {
       `${bold(updateCommand)} to update.`,
     ]);
 
-    view(GOD_STATE);
+    buildView(GOD_STATE);
   }
 }
 
