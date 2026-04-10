@@ -2,7 +2,7 @@ import { exec } from "child_process";
 import { readFileSync } from "fs";
 import * as fsPath from "path";
 
-import { InputError, PackageInfo } from "./types";
+import { err, InputError, ok, PackageInfo, Result } from "./types";
 
 let cachedPackageInfo: PackageInfo | null = null;
 
@@ -44,23 +44,24 @@ function isPackageInfo(value: unknown): value is PackageInfo {
   return true;
 }
 
-export function readPackageInfo(): PackageInfo {
-  if (cachedPackageInfo !== null) return cachedPackageInfo;
+export function readPackageInfo(): Result<PackageInfo> {
+  if (cachedPackageInfo !== null) return ok(cachedPackageInfo);
 
   const data: unknown = JSON.parse(
     readFileSync(fsPath.join(__dirname, "../package.json"), "utf-8"),
   );
 
   if (!isPackageInfo(data)) {
-    throw new Error("package.json is missing required fields");
+    return err(new Error("package.json is missing required fields"));
   }
 
   const nodeVersionMatch = data.engines.node.match(SEMVER_RANGE_PATTERN);
-  if (nodeVersionMatch === null) {
-    throw new Error(
-      `package.json engines.node is not a valid semver: ${data.engines.node}`,
+  if (nodeVersionMatch === null)
+    return err(
+      new Error(
+        `package.json engines.node is not a valid semver: ${data.engines.node}`,
+      ),
     );
-  }
 
   // cache the result so subsequent calls skip the file read and validation
   cachedPackageInfo = {
@@ -68,21 +69,28 @@ export function readPackageInfo(): PackageInfo {
     engines: { node: nodeVersionMatch[0] },
   };
 
-  return cachedPackageInfo;
+  return ok(cachedPackageInfo);
 }
 
 export function isOlderVersion(a: string, b: string): boolean {
   return a.localeCompare(b, undefined, { numeric: true }) < 0;
 }
 
-export function ensureNodeVersion() {
+export function ensureNodeVersion(): Result<true> {
   const currentVersion = process.versions.node;
-  const requiredVersion = readPackageInfo().engines.node;
+  const res = readPackageInfo();
 
-  if (isOlderVersion(currentVersion, requiredVersion)) {
-    throw new InputError(
-      "Unsupported Node.js version.",
-      `git-jump requires Node.js version >=${requiredVersion}, you're using ${currentVersion}.`,
+  if (res.tag === "err") return err(res.error);
+
+  const requiredVersion = res.value.engines.node;
+
+  if (isOlderVersion(currentVersion, requiredVersion))
+    return err(
+      new InputError(
+        "Unsupported Node.js version.",
+        `git-jump requires Node.js version >=${requiredVersion}, you're using ${currentVersion}.`,
+      ),
     );
-  }
+
+  return ok(true);
 }

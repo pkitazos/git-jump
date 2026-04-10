@@ -7,6 +7,7 @@ import {
   LinesWindow,
   ListItem,
   ListItemVariant,
+  Message,
   RenderOutput,
   Scene,
   State,
@@ -228,6 +229,52 @@ function formatSearchField(searchString: string, width: number): string {
     : truncate(searchString, width).padEnd(width, " ");
 }
 
+/**
+ * Parses custom pseudo-tags ({bold}, {dim}, {wrap:N}) into terminal-ready strings.
+ */
+export function formatHelpText(rawHelp: string, columns: number): string[] {
+  let help = rawHelp;
+
+  help = help.replace(/\{bold\}(.+)\{\/bold\}/g, (_, content) => bold(content));
+
+  help = help.replace(/\{dim\}(.+)\{\/dim\}/g, (_, content) => dim(content));
+
+  help = help.replace(
+    /\{wrap:(\d+)\}(.+)\{\/wrap\}/g,
+    (_, paddingSize, content) => {
+      const pad = parseInt(paddingSize, 10);
+      return wrapText(content.trim(), columns - pad)
+        .map((line, index) => (index === 0 ? line : " ".repeat(pad) + line))
+        .join("\n");
+    },
+  );
+
+  return help.split("\n");
+}
+
+function formatMessageBlock(
+  messagePayload: Message,
+  columns: number,
+): string[] {
+  if (messagePayload.kind === "error") {
+    const { title, message } = messagePayload.error;
+
+    const wrappedBody = wrapText(message, columns - LINE_SPACER.length).map(
+      (line) => LINE_SPACER + line,
+    );
+
+    return ["", LINE_SPACER + red(bold(title)), "", ...wrappedBody, "", ""];
+  }
+
+  const wrappedLines = messagePayload.content
+    .flatMap((line) =>
+      line === "" ? [""] : wrapText(line, columns - LINE_SPACER.length),
+    )
+    .map((line) => LINE_SPACER + line);
+
+  return ["", ...wrappedLines, "", ""];
+}
+
 // --- section builders
 
 function buildListLines(list: ListItem[], layout: LayoutColumn[]): string[] {
@@ -337,29 +384,21 @@ function buildSearchLine(
 export function buildView(state: State): RenderOutput {
   return match(state, "scene", {
     [Scene.MESSAGE]: () => {
-      const wrappedLines = state.message
-        .flatMap((line) =>
-          line === ""
-            ? [""]
-            : wrapText(line, state.columns - LINE_SPACER.length),
-        )
-        .map((line) => LINE_SPACER + line);
-
       return {
-        tag: "message",
-        lines: ["", ...wrappedLines, "", ""],
-      } satisfies RenderOutput;
+        tag: Scene.MESSAGE,
+        lines: formatMessageBlock(state.message, state.columns),
+      };
     },
 
-    [Scene.LIST]: () => {
-      if (!state.isInteractive) {
-        const plainLines = buildPlainList(state.list, state.columns);
-        return {
-          tag: "listPlain",
-          lines: [...plainLines, ""],
-        } satisfies RenderOutput;
-      }
+    [Scene.LIST_PLAIN]: () => {
+      const plainLines = buildPlainList(state.list, state.columns);
+      return {
+        tag: Scene.LIST_PLAIN,
+        lines: [...plainLines, ""],
+      };
+    },
 
+    [Scene.LIST_INTERACTIVE]: () => {
       const searchLine = buildSearchLine(
         state.searchString,
         state.list,
@@ -379,10 +418,27 @@ export function buildView(state: State): RenderOutput {
         BRANCH_INDEX_PADD.length + state.searchStringCursorPosition + 1;
 
       return {
-        tag: "listInteractive",
+        tag: Scene.LIST_INTERACTIVE,
         lines: [searchLine, ...interactiveList],
         cursor: { x: xPos, y: 1 },
-      } satisfies RenderOutput;
+      };
+    },
+  });
+}
+
+export function render(output: RenderOutput): void {
+  match(output, "tag", {
+    [Scene.MESSAGE]: (o) => {
+      clear();
+      write(o.lines);
+    },
+    [Scene.LIST_PLAIN]: (o) => {
+      write(o.lines);
+    },
+    [Scene.LIST_INTERACTIVE]: (o) => {
+      clear();
+      write(o.lines);
+      cursorTo(o.cursor.x, o.cursor.y);
     },
   });
 }
@@ -410,7 +466,7 @@ export function clear() {
   process.stdout.write(`\x1b[0J`);
 }
 
-function write(lines: string[]) {
+export function write(lines: string[]) {
   process.stdout.write(lines.join("\n"));
 
   // Keep track of the cursor's vertical position

@@ -72,6 +72,7 @@ export function deleteJumpDataBranch(
 
 // --- actual file I/O
 
+// todo: return Result
 function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
   try {
     return JSON.parse(

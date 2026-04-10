@@ -3,6 +3,7 @@ import { StringDecoder } from "string_decoder";
 // Control Sequence Format
 // 1b (5b|4f) [number] [; number]+ (Letter or ~)
 
+// todo: return Result
 export function parseKeys(data: Buffer) {
   const keys = [];
   let context = null;

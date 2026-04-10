@@ -1,15 +1,21 @@
 import { readFileSync } from "fs";
 import * as fsPath from "path";
-import { GOD_STATE } from ".";
-import { gitCommand, gitSwitch } from "./git";
+import { gitCommand } from "./git";
 import {
   deleteJumpDataBranch,
   renameJumpDataBranch,
   updateBranchLastSwitch,
 } from "./storage";
 import { readPackageInfo } from "./system";
-import { InputError, Scene } from "./types";
-import { bold, buildView, dim, wrapText } from "./ui";
+import {
+  AppConfig,
+  CommandResult,
+  errorMessage,
+  infoMessage,
+  resolveCommandMessage,
+  Scene,
+} from "./types";
+import { bold, formatHelpText } from "./ui";
 
 export function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
@@ -32,110 +38,106 @@ export function isSubCommand(args: string[]): boolean {
  * @param name - The primary sub-command name (e.g., "--list", "new", "rename").
  * @param args - Any subsequent arguments required by the specific sub-command.
  */
-export function executeSubCommand(name: string, args: string[]) {
+export function executeSubCommand(
+  config: AppConfig,
+  name: string,
+  args: string[],
+): CommandResult {
   switch (name) {
     case "--list":
-    case "-l": {
-      listSubCommand();
-      break;
-    }
+    case "-l":
+      return listSubCommand();
+
     case "--version":
-    case "-v": {
-      versionSubCommand();
-      break;
-    }
+    case "-v":
+      return versionSubCommand();
+
     // --help is handled by git natively, it open man page
     // using ./git-jump.1
-    case "-h": {
-      helpSubCommand();
-      break;
-    }
-    case "new": {
-      newSubCommand(args);
-      break;
-    }
-    case "rename": {
-      renameSubCommand(args);
-      break;
-    }
-    case "delete": {
-      deleteSubCommand(args);
-      break;
-    }
-    default: {
-      throw new InputError(
-        `Unknown command ${bold(`git jump ${name}`)}`,
-        `See ${bold("git jump --help")} for the list of supported commands.`,
-      );
-    }
+    case "-h":
+      return helpSubCommand(config);
+
+    case "new":
+      return newSubCommand(config, args);
+
+    case "rename":
+      return renameSubCommand(config, args);
+
+    case "delete":
+      return deleteSubCommand(config, args);
+
+    default:
+      return {
+        exitCode: 1,
+        scene: Scene.MESSAGE,
+        message: errorMessage(
+          `Unknown command ${bold(`git jump ${name}`)}`,
+          `See ${bold("git jump --help")} for the list of supported commands.`,
+        ),
+      };
   }
 }
 
-function versionSubCommand() {
+/// side-effect: read packageInfo
+function versionSubCommand(): CommandResult {
   let { version } = readPackageInfo();
-  process.stdout.write(`${version}\n`);
-  process.exit(0);
+  return {
+    scene: Scene.MESSAGE,
+    message: infoMessage([version, ""]),
+    exitCode: 0,
+  };
 }
 
-function listSubCommand(): void {
-  GOD_STATE.isInteractive = false;
-
-  buildView(GOD_STATE);
-
-  process.exit(0);
+function listSubCommand(): CommandResult {
+  return {
+    scene: Scene.LIST_PLAIN,
+    exitCode: 0,
+  };
 }
 
-function newSubCommand(args: string[]): void {
-  const { status, message } = gitSwitch(["--create", ...args]);
-
-  GOD_STATE.scene = Scene.MESSAGE;
-  GOD_STATE.message = message;
+/// side-effect: update the JumpData file
+function newSubCommand(config: AppConfig, args: string[]): CommandResult {
+  const { status, message } = gitCommand("switch", ["--create", ...args]);
 
   if (status === 0) {
-    updateBranchLastSwitch(args[0], Date.now(), GOD_STATE);
+    updateBranchLastSwitch(args[0], Date.now(), config.gitRepoFolder);
   }
 
-  buildView(GOD_STATE);
-
-  process.exit(status);
+  return {
+    scene: Scene.MESSAGE,
+    message: resolveCommandMessage(
+      status,
+      message,
+      "Failed to Create new Branch",
+    ),
+    exitCode: status,
+  };
 }
 
-function helpSubCommand(): void {
-  let help = readFileSync(fsPath.join(__dirname, "../help.txt")).toString();
+/// side-effect: read the help text
+function helpSubCommand(config: AppConfig): CommandResult {
+  const rawHelp = readFileSync(
+    fsPath.join(__dirname, "../docs/help.txt"),
+  ).toString();
 
-  help = help.replace(/\{bold\}(.+)\{\/bold\}/g, (substring, content) =>
-    bold(content),
-  );
-  help = help.replace(/\{dim\}(.+)\{\/dim\}/g, (substring, content) =>
-    dim(content),
-  );
-  help = help.replace(
-    /\{wrap:(\d+)\}(.+)\{\/wrap\}/g,
-    (substring, paddingSize, content) => {
-      return wrapText(
-        content.trim(),
-        process.stdout.columns - parseInt(paddingSize),
-      )
-        .map((line, index) => {
-          // Padding only the lines which wrap to the next line,
-          // first line supposed to be already padded
-          return index === 0 ? line : " ".repeat(paddingSize) + line;
-        })
-        .join("\n");
-    },
-  );
-
-  process.stdout.write(help);
-
-  process.exit(0);
+  return {
+    scene: Scene.MESSAGE,
+    message: infoMessage(formatHelpText(rawHelp, config.columns)),
+    exitCode: 0,
+  };
 }
 
-function renameSubCommand(args: string[]): void {
+/// side-effect: update the JumpData file
+function renameSubCommand(config: AppConfig, args: string[]): CommandResult {
   if (args.length < 2) {
-    throw new InputError(
-      "Wrong Format.",
-      `You should specify both current and new branch name, ${bold("git jump rename <old branch name> <new branch name>")}.`,
-    );
+    return {
+      exitCode: 1,
+      scene: Scene.MESSAGE,
+      message: errorMessage(
+        "Wrong Format.",
+        `You should specify both current and new branch name, ${bold("git jump rename <old branch name> <new branch name>")}.`,
+      ),
+    };
   }
 
   const { status, message } = gitCommand("branch", [
@@ -144,31 +146,37 @@ function renameSubCommand(args: string[]): void {
     args[1],
   ]);
 
-  GOD_STATE.scene = Scene.MESSAGE;
-  GOD_STATE.message = message;
-
-  if (status === 0) {
-    renameJumpDataBranch(args[0], args[1], GOD_STATE);
-
-    GOD_STATE.message.push("Renamed.");
+  if (status !== 0) {
+    return {
+      scene: Scene.MESSAGE,
+      message: resolveCommandMessage(
+        status,
+        message,
+        "Failed to Rename Branch",
+      ),
+      exitCode: status,
+    };
   }
 
-  buildView(GOD_STATE);
+  renameJumpDataBranch(args[0], args[1], config.gitRepoFolder);
+  message.push("Renamed.");
 
-  process.exit(status);
+  return {
+    scene: Scene.MESSAGE,
+    message: infoMessage(message),
+    exitCode: 0,
+  };
 }
 
-function deleteSubCommand(args: string[]): void {
+/// side-effect: update the JumpData file
+function deleteSubCommand(config: AppConfig, args: string[]): CommandResult {
   const { status, message } = gitCommand("branch", ["--delete", ...args]);
 
-  GOD_STATE.scene = Scene.MESSAGE;
-  GOD_STATE.message = message;
+  if (status === 0) deleteJumpDataBranch(args, config.gitRepoFolder);
 
-  if (status === 0) {
-    deleteJumpDataBranch(args, GOD_STATE);
-  }
-
-  buildView(GOD_STATE);
-
-  process.exit(status);
+  return {
+    scene: Scene.MESSAGE,
+    message: resolveCommandMessage(status, message, "Failed to Delete Branch"),
+    exitCode: status,
+  };
 }

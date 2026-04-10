@@ -1,14 +1,15 @@
 import { spawnSync } from "child_process";
 import { opendirSync, readFileSync } from "fs";
 import * as fsPath from "path";
-import { updateBranchLastSwitch } from "./storage";
-import { CurrentHEAD, GitCommandResult, InputError } from "./types";
-import { bold, dim, green, red } from "./ui";
-import { GOD_STATE } from ".";
+import { CurrentHEAD, InputError, Result } from "./types";
 
-export function locateGitRepoFolder(folder: string): string {
+export type GitCommandResult = {
+  status: number;
+  message: string[];
+};
+
+export function locateGitRepoFolder(folder: string): Result<string> {
   const dir = opendirSync(folder);
-
   let item = dir.readSync();
   let found = false;
 
@@ -19,58 +20,80 @@ export function locateGitRepoFolder(folder: string): string {
 
   dir.closeSync();
 
-  if (found) {
-    return folder;
-  }
+  if (found) return { tag: "ok", value: folder };
 
   if (folder === "/") {
-    throw new InputError(
-      `You're not in Git repo.`,
-      "There is no Git repository in current or any parent folder.",
-    );
+    return {
+      tag: "err",
+      error: new InputError(
+        `You're not in a Git repo.`,
+        "There is no Git repository in the current or any parent folder.",
+      ),
+    };
   }
 
   return locateGitRepoFolder(fsPath.resolve(folder, ".."));
 }
 
-export function readRawGitBranches(): string[] {
+export function readRawGitBranches(): Result<string[]> {
   const { stdout, stderr, error } = spawnSync(
     "git",
     ["branch", `--format=%(refname:short)`],
     { encoding: "utf-8" },
   );
 
-  if (error) {
-    throw new Error(
-      `Could not get the list of Git branches. Cause: ${error.message}. Stacktrace: ${error.stack}.`,
-    );
+  if (error || stderr !== "") {
+    return {
+      tag: "err",
+      error: new InputError(
+        "Git Command Failed",
+        error ? error.message : stderr,
+      ),
+    };
   }
 
-  if (stderr !== "") {
-    throw new Error(
-      `Could not get the list of Git branches. Cause: ${stderr}.`,
-    );
-  }
-
-  return stdout.split("\n").filter((branchName) => branchName !== "");
+  const branches = stdout.split("\n").filter((b) => b !== "");
+  return { tag: "ok", value: branches };
 }
 
-export function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
-  const head = readFileSync(fsPath.join(gitRepoFolder, ".git/HEAD")).toString();
+export function readCurrentHEAD(gitRepoFolder: string): Result<CurrentHEAD> {
+  try {
+    const head = readFileSync(fsPath.join(gitRepoFolder, ".git/HEAD"), {
+      encoding: "utf-8",
+    });
 
-  if (!head.startsWith("ref:")) {
-    return { detached: true, sha: head.slice(0, 7).trim(), branchName: null };
+    if (!head.startsWith("ref:")) {
+      return {
+        tag: "ok",
+        value: {
+          detached: true,
+          sha: head.slice(0, 7).trim(),
+          branchName: null,
+        },
+      };
+    }
+
+    return {
+      tag: "ok",
+      value: { detached: false, sha: null, branchName: head.slice(16).trim() },
+    };
+  } catch (error: any) {
+    return {
+      tag: "err",
+      error: new InputError(
+        "Failed to read HEAD",
+        `Could not read .git/HEAD: ${error.message}`,
+      ),
+    };
   }
-
-  return { detached: false, sha: null, branchName: head.slice(16).trim() };
 }
 
 /**
- * Executes a Git command synchronously and formats the output for the UI.
+ * Executes a Git command synchronously.
  * It catches errors and neatly packages the standard output and error streams.
  * @param command - The primary Git sub-command to run (e.g., "branch", "switch").
  * @param args - Additional flags or arguments for the command.
- * @returns An object containing the exit status, formatted UI messages, and raw stdout/stderr.
+ * @returns An object containing the exit status and raw stdout/stderr lines.
  */
 export function gitCommand(command: string, args: string[]): GitCommandResult {
   const commandString = ["git", command, ...args].join(" ");
@@ -80,7 +103,10 @@ export function gitCommand(command: string, args: string[]): GitCommandResult {
   });
 
   if (error) {
-    throw new Error(`Could not run ${bold(commandString)}.`);
+    return {
+      status: 1,
+      message: [`Could not run git ${command}:`, error.message],
+    };
   }
 
   const cleanLines = (text: string) =>
@@ -89,27 +115,8 @@ export function gitCommand(command: string, args: string[]): GitCommandResult {
       .split("\n")
       .filter((line) => line !== "");
 
-  const statusCode = status ?? 1;
-  const statusIndicatorColor = statusCode > 0 ? red : green;
-  const message = [
-    statusIndicatorColor("‣ ") + dim(commandString),
-    ...cleanLines(stdout),
-    ...cleanLines(stderr),
-  ];
-
-  return { status: statusCode, message, stdout, stderr };
-}
-
-export function gitSwitch(args: string[]): GitCommandResult {
-  const isParameter = (argument: string) =>
-    argument.startsWith("-") || argument.startsWith("--");
-  const switchResult = gitCommand("switch", args);
-  const branchName =
-    args.length === 1 && !isParameter(args[0]) ? args[0] : null;
-
-  if (switchResult.status === 0 && branchName !== null) {
-    updateBranchLastSwitch(branchName, Date.now(), GOD_STATE);
-  }
-
-  return switchResult;
+  return {
+    status: status ?? 1,
+    message: [...cleanLines(stdout), ...cleanLines(stderr)],
+  };
 }
