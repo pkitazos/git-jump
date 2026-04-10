@@ -1,6 +1,5 @@
 export type AppConfig = {
   gitRepoFolder: string;
-  isInteractive: boolean;
   isMac: boolean;
   rows: number;
   columns: number;
@@ -18,7 +17,7 @@ export type UIState = {
   searchStringCursorPosition: number;
   list: ListItem[];
   scene: TScene;
-  message: string[];
+  message: Message;
 };
 
 /**
@@ -36,6 +35,34 @@ export class InputError extends Error {
     super(message);
     this.title = title;
   }
+}
+
+export type Message =
+  | { kind: "error"; error: InputError }
+  | { kind: "info"; content: string[] };
+
+/**
+ * Translates a standard status code and message array into a safe Message payload.
+ * * @param status - The exit code of the operation (0 = success).
+ * @param lines - The text output from the operation.
+ * @param errorTitle - A fallback title to use if the status indicates an error.
+ */
+export function resolveCommandMessage(
+  status: number,
+  lines: string[],
+  errorTitle: string = "Command Failed",
+): Message {
+  return status === 0
+    ? infoMessage(lines)
+    : errorMessage(errorTitle, lines.join("\n"));
+}
+
+export function infoMessage(content: string[]): Message {
+  return { kind: "info", content };
+}
+
+export function errorMessage(title: string, content: string): Message {
+  return { kind: "error", error: new InputError(title, content) };
 }
 
 export type InputResult =
@@ -97,7 +124,11 @@ export type PackageInfo = {
 /**
  * Defines the active view or screen of the application.
  */
-export const Scene = { LIST: "list", MESSAGE: "message" } as const;
+export const Scene = {
+  LIST_PLAIN: "list_plain",
+  LIST_INTERACTIVE: "list_interactive",
+  MESSAGE: "message",
+} as const;
 
 export type TScene = (typeof Scene)[keyof typeof Scene];
 
@@ -136,20 +167,27 @@ export type LayoutColumn = {
 };
 
 export type RenderOutput =
+  | { tag: typeof Scene.MESSAGE; lines: string[] }
+  | { tag: typeof Scene.LIST_PLAIN; lines: string[] }
   | {
-      tag: "listInteractive";
+      tag: typeof Scene.LIST_INTERACTIVE;
       lines: string[];
       cursor: { x: number; y: number };
-    }
-  | { tag: "listPlain"; lines: string[] }
-  | { tag: "message"; lines: string[] };
+    };
 
-export type GitCommandResult = {
-  status: number;
-  message: string[];
-  stdout: string;
-  stderr: string;
-};
+export type CommandResult =
+  | {
+      scene: typeof Scene.MESSAGE;
+      message: Message;
+      exitCode: number;
+    }
+  | {
+      scene: typeof Scene.LIST_PLAIN;
+      exitCode: number;
+    }
+  | {
+      scene: typeof Scene.LIST_INTERACTIVE;
+    };
 
 export const ListSortCriterion = {
   LAST_SWITCH: "LastSwitch",
@@ -158,3 +196,13 @@ export const ListSortCriterion = {
 
 export type TListSortCriterion =
   (typeof ListSortCriterion)[keyof typeof ListSortCriterion];
+
+export type Result<T> = { tag: "ok"; value: T } | { tag: "err"; error: Error };
+
+export function ok<T>(value: T): Result<T> {
+  return { tag: "ok", value };
+}
+
+export function err<T>(error: Error): Result<T> {
+  return { tag: "err", error };
+}

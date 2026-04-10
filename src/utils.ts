@@ -47,3 +47,44 @@ export function match<
 >(val: T, discriminator: K, cases: C): ReturnType<C[keyof C]> {
   return cases[val[discriminator]](val as any);
 }
+
+/**
+ * Pattern matches a value against an exhaustive set of cases.
+ *
+ * @example
+ * const result = match(status, {
+ *   [Status.ACTIVE]: () => "active",
+ *   [Status.INACTIVE]: () => "inactive",
+ * });
+ *
+ * @param value - The value to match against.
+ * @param cases - An exhaustive record mapping every possible value to a handler.
+ * @returns The result of the matching handler.
+ */
+export function match_SIMPLE<K extends string | number | symbol, R>(
+  value: K,
+  cases: Record<K, () => R>,
+): R {
+  return cases[value]();
+}
+
+// let res: GitSubCommandResult = match_SIMPLE(name, {
+//   [("--list", "-l")]: () => listSubCommand(),
+
+//   [("--version", "-v")]: () => versionSubCommand(),
+
+//   ["-h"]: () => helpSubCommand(),
+
+//   ["new"]: () => newSubCommand(args),
+
+//   ["rename"]: () => renameSubCommand(args),
+
+//   ["delete"]: () => deleteSubCommand(args),
+
+//   _: () => {
+//     throw new InputError(
+//       `Unknown command ${bold(`git jump ${name}`)}`,
+//       `See ${bold("git jump --help")} for the list of supported commands.`,
+//     );
+//   },
+// });
