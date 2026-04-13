@@ -80,10 +80,18 @@ export function executeSubCommand(
 
 /// side-effect: read packageInfo
 function versionSubCommand(): CommandResult {
-  let { version } = readPackageInfo();
+  const res = readPackageInfo();
+
+  if (res.tag === "err")
+    return {
+      scene: Scene.MESSAGE,
+      message: handleError(res.error),
+      exitCode: 1,
+    };
+
   return {
     scene: Scene.MESSAGE,
-    message: infoMessage([version, ""]),
+    message: infoMessage([res.value.version, ""]),
     exitCode: 0,
   };
 }

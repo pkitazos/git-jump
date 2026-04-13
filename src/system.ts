@@ -76,7 +76,7 @@ export function isOlderVersion(a: string, b: string): boolean {
   return a.localeCompare(b, undefined, { numeric: true }) < 0;
 }
 
-export function ensureNodeVersion(): Result<true> {
+export function ensureNodeVersion(): Result<void> {
   const currentVersion = process.versions.node;
   const res = readPackageInfo();
 
@@ -92,5 +92,5 @@ export function ensureNodeVersion(): Result<true> {
       ),
     );
 
-  return ok(true);
+  return ok(undefined);
 }

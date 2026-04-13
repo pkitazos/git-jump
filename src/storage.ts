@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import * as fsPath from "path";
 import { DATA_FILE_PATH } from "./constants";
-import { BranchData, BranchDataCollection } from "./types";
+import { BranchData, BranchDataCollection, Result, ok, err } from "./types";
 
 // --- adapters
 
@@ -12,15 +12,17 @@ import { BranchData, BranchDataCollection } from "./types";
 export function getAndCleanBranchData(
   rawGitBranches: string[],
   gitRepoFolder: string,
-): BranchData[] {
-  const jumpData = readBranchesJumpData(gitRepoFolder);
+): Result<BranchData[]> {
+  const res1 = readBranchesJumpData(gitRepoFolder);
+  if (res1.tag === "err") return res1;
 
-  const cleanJumpData = filterStaleJumpData(rawGitBranches, jumpData);
+  const cleanJumpData = filterStaleJumpData(rawGitBranches, res1.value);
   const reconciledBranches = reconcileBranches(rawGitBranches, cleanJumpData);
 
-  saveBranchesJumpData(gitRepoFolder, cleanJumpData);
+  const res2 = saveBranchesJumpData(gitRepoFolder, cleanJumpData);
+  if (res2.tag === "err") return res2;
 
-  return reconciledBranches;
+  return ok(reconciledBranches);
 }
 
 /**
@@ -31,12 +33,13 @@ export function updateBranchLastSwitch(
   name: string,
   lastSwitch: number,
   gitRepoFolder: string,
-): void {
-  const jumpData = readBranchesJumpData(gitRepoFolder);
+): Result<void> {
+  const res1 = readBranchesJumpData(gitRepoFolder);
+  if (res1.tag === "err") return res1;
 
-  const updatedData = setBranchTimestamp(jumpData, name, lastSwitch);
+  const updatedData = setBranchTimestamp(res1.value, name, lastSwitch);
 
-  saveBranchesJumpData(gitRepoFolder, updatedData);
+  return saveBranchesJumpData(gitRepoFolder, updatedData);
 }
 
 /**
@@ -47,12 +50,13 @@ export function renameJumpDataBranch(
   currentName: string,
   newName: string,
   gitRepoFolder: string,
-): void {
-  const jumpData = readBranchesJumpData(gitRepoFolder);
+): Result<void> {
+  const res1 = readBranchesJumpData(gitRepoFolder);
+  if (res1.tag === "err") return res1;
 
-  const updatedData = renameBranch(jumpData, currentName, newName);
+  const updatedData = renameBranch(res1.value, currentName, newName);
 
-  saveBranchesJumpData(gitRepoFolder, updatedData);
+  return saveBranchesJumpData(gitRepoFolder, updatedData);
 }
 
 /**
@@ -62,25 +66,31 @@ export function renameJumpDataBranch(
 export function deleteJumpDataBranch(
   branchNames: string[],
   gitRepoFolder: string,
-): void {
-  const jumpData = readBranchesJumpData(gitRepoFolder);
+): Result<void> {
+  const res1 = readBranchesJumpData(gitRepoFolder);
+  if (res1.tag === "err") return res1;
 
-  const updatedData = deleteBranches(jumpData, branchNames);
+  const updatedData = deleteBranches(res1.value, branchNames);
 
-  saveBranchesJumpData(gitRepoFolder, updatedData);
+  return saveBranchesJumpData(gitRepoFolder, updatedData);
 }
 
 // --- actual file I/O
 
-// todo: return Result
-function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
+function readBranchesJumpData(
+  gitRepoFolder: string,
+): Result<BranchDataCollection> {
   try {
-    return JSON.parse(
-      readFileSync(fsPath.join(gitRepoFolder, DATA_FILE_PATH)).toString(),
+    return ok(
+      JSON.parse(
+        readFileSync(fsPath.join(gitRepoFolder, DATA_FILE_PATH)).toString(),
+      ),
     );
   } catch (e) {
-    throw new Error(
-      `JSON in "${DATA_FILE_PATH}" is not valid, could not parse it.`,
+    return err(
+      new Error(
+        `JSON in "${DATA_FILE_PATH}" is not valid, could not parse it.`,
+      ),
     );
   }
 }
@@ -88,14 +98,15 @@ function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
 function saveBranchesJumpData(
   gitRepoFolder: string,
   jumpData: BranchDataCollection,
-): void {
+): Result<void> {
   try {
     writeFileSync(
       fsPath.join(gitRepoFolder, DATA_FILE_PATH),
       JSON.stringify(jumpData, null, 2),
     );
+    return ok(undefined);
   } catch (e) {
-    throw new Error(`Could not write data into "${DATA_FILE_PATH}".`);
+    return err(new Error(`Could not write data into "${DATA_FILE_PATH}".`));
   }
 }
 
