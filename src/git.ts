@@ -96,8 +96,6 @@ export function readCurrentHEAD(gitRepoFolder: string): Result<CurrentHEAD> {
  * @returns An object containing the exit status and raw stdout/stderr lines.
  */
 export function gitCommand(command: string, args: string[]): GitCommandResult {
-  const commandString = ["git", command, ...args].join(" ");
-
   let { stdout, stderr, error, status } = spawnSync("git", [command, ...args], {
     encoding: "utf-8",
   });

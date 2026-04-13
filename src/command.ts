@@ -7,15 +7,22 @@ import {
   updateBranchLastSwitch,
 } from "./storage";
 import { readPackageInfo } from "./system";
+import { generateList, getBranchNameForLine } from "./list";
 import {
   AppConfig,
+  BranchData,
   CommandResult,
+  CurrentHEAD,
   errorMessage,
   infoMessage,
+  InputError,
+  ListItem,
+  ListItemVariant,
+  Message,
   resolveCommandMessage,
   Scene,
 } from "./types";
-import { bold, formatHelpText } from "./ui";
+import { bold, formatHelpText, red, yellow } from "./ui";
 
 export function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
@@ -187,4 +194,78 @@ function deleteSubCommand(config: AppConfig, args: string[]): CommandResult {
     message: resolveCommandMessage(status, message, "Failed to Delete Branch"),
     exitCode: status,
   };
+}
+
+/// side-effect: execute git switch
+export function switchToListItem(item: ListItem): {
+  scene: typeof Scene.MESSAGE;
+  message: Message;
+  exitCode: number;
+} {
+  const branchName = getBranchNameForLine(item);
+
+  if (item.type === ListItemVariant.HEAD) {
+    return {
+      scene: Scene.MESSAGE,
+      message: infoMessage([`Staying on ${bold(branchName)}`]),
+      exitCode: 0,
+    };
+  }
+
+  const { status, message } = gitCommand("switch", [branchName]);
+
+  return {
+    scene: Scene.MESSAGE,
+    message: resolveCommandMessage(status, message, "Failed to Switch Branch"),
+    exitCode: status,
+  };
+}
+
+/// side-effect: execute git switch
+export function jumpTo(
+  args: string[],
+  branches: BranchData[],
+  currentHEAD: CurrentHEAD,
+): CommandResult {
+  const switchResult = gitCommand("switch", args);
+
+  if (switchResult.status === 0) {
+    return {
+      scene: Scene.MESSAGE,
+      message: infoMessage(switchResult.message),
+      exitCode: 0,
+    };
+  }
+
+  const list = generateList(branches, currentHEAD, args[0]);
+
+  if (list.length === 0) {
+    return {
+      scene: Scene.MESSAGE,
+      message: errorMessage(
+        "No Match",
+        `${bold(yellow(args[0]))} does not match any branch`,
+      ),
+      exitCode: 1,
+    };
+  }
+
+  return switchToListItem(list[0]);
+}
+
+export function handleError(error: Error): Message {
+  if (error instanceof InputError) {
+    return errorMessage(yellow(error.title), error.message);
+  }
+
+  return errorMessage(
+    `${red("Error:")} ${error.message}`,
+    [
+      "",
+      `${bold("What to do?")}`,
+      "Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!",
+      "",
+      `GitHub Issues: https://github.com/pkitazos/git-jump/issues`,
+    ].join("\n"),
+  );
 }
