@@ -369,8 +369,6 @@ function buildSearchLine(
   return baseLine + hint;
 }
 
-// --- the main public-facing API
-
 /**
  * Takes the current application state and produces a pure, declarative description of the UI.
  * We do this by looking at the active "scene" and constructing a `RenderOutput`
@@ -381,7 +379,7 @@ function buildSearchLine(
  * - LIST (Plain): Computes a raw string dump of branches (used when piping to other commands).
  * - MESSAGE: Computes a padded, text-wrapped message block.
  */
-export function buildView(state: State): RenderOutput {
+function buildView(state: State): RenderOutput {
   return match(state, "scene", {
     [Scene.MESSAGE]: () => {
       return {
@@ -426,7 +424,7 @@ export function buildView(state: State): RenderOutput {
   });
 }
 
-export function render(output: RenderOutput): void {
+function render(output: RenderOutput): void {
   match(output, "tag", {
     [Scene.MESSAGE]: (o) => {
       clear();
@@ -441,6 +439,12 @@ export function render(output: RenderOutput): void {
       cursorTo(o.cursor.x, o.cursor.y);
     },
   });
+}
+
+// --- the main public-facing API
+
+export function renderView(state: State) {
+  render(buildView(state));
 }
 
 // --- terminal writer
