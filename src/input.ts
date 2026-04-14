@@ -6,6 +6,9 @@ import {
   ENTER,
   ESCAPE_CODE,
   LEFT,
+  OPT_BACKSPACE,
+  OPT_LEFT,
+  OPT_RIGHT,
   RIGHT,
   UNICODE_C0_RANGE,
   UNICODE_C1_RANGE,
@@ -88,6 +91,54 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
       state: {
         ...state,
         searchStringCursorPosition: state.searchStringCursorPosition - 1,
+      },
+    };
+  }
+
+  if (key.equals(OPT_RIGHT)) {
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchStringCursorPosition: nextWordBoundary(
+          state.searchString,
+          state.searchStringCursorPosition,
+        ),
+      },
+    };
+  }
+
+  if (key.equals(OPT_LEFT)) {
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchStringCursorPosition: prevWordBoundary(
+          state.searchString,
+          state.searchStringCursorPosition,
+        ),
+      },
+    };
+  }
+
+  if (key.equals(OPT_BACKSPACE)) {
+    const stopAt = prevWordBoundary(
+      state.searchString,
+      state.searchStringCursorPosition,
+    );
+
+    const newSearchString =
+      state.searchString.slice(0, stopAt) +
+      state.searchString.slice(state.searchStringCursorPosition);
+
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchString: newSearchString,
+        searchStringCursorPosition: stopAt,
+        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        highlightedLineIndex: 0,
       },
     };
   }
@@ -202,4 +253,24 @@ function isMetaPlusNumberCombination(key: Buffer) {
 function getNumberFromMetaPlusCombination(key: Buffer): number {
   // E.g. number = 5 = 0x35 = 0011 0101; 0011 0101 & 0000 1111 = 0000 0101 = 5
   return key[1] & 0x0f;
+}
+
+const BREAKPOINTS = [" ", "-", "/", ".", "_"];
+
+function nextWordBoundary(text: string, pos: number): number {
+  let i = pos;
+  // first skip breakpoint characters in case we're right next to them
+  while (i < text.length && BREAKPOINTS.includes(text[i])) i++;
+  // then skip word characters until next breakpoint
+  while (i < text.length && !BREAKPOINTS.includes(text[i])) i++;
+  return i;
+}
+
+function prevWordBoundary(text: string, pos: number): number {
+  let i = pos - 1;
+  // first skip breakpoint characters in case we're right next to them
+  while (i >= 0 && BREAKPOINTS.includes(text[i])) i--;
+  // then skip word characters until next breakpoint
+  while (i >= 0 && !BREAKPOINTS.includes(text[i])) i--;
+  return i + 1;
 }

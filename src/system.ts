@@ -15,7 +15,7 @@ const SEMVER_RANGE_PATTERN = /\d+\.\d+\.\d+/;
 
 export function fetchLatestVersion(): Promise<string | null> {
   return new Promise((resolve) => {
-    exec("npm info git-jump dist-tags.latest", (error, stdout) => {
+    exec("npm info @pkitazos/git-jump dist-tags.latest", (error, stdout) => {
       if (error) {
         resolve(null);
         return;
