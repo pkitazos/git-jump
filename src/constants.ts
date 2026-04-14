@@ -23,6 +23,13 @@ export const ENTER = Buffer.from("0d", "hex");
 export const OPT_LEFT = Buffer.from("1b62", "hex");
 export const OPT_RIGHT = Buffer.from("1b66", "hex");
 export const OPT_BACKSPACE = Buffer.from("1b7f", "hex");
+export const CMD_LEFT = Buffer.from("1b4f48", "hex");
+export const CTRL_A = Buffer.from("01", "hex");
+export const CMD_RIGHT = Buffer.from("1b4f46", "hex");
+export const CTRL_E = Buffer.from("05", "hex");
+export const FN_DELETE = Buffer.from("1b5b337e", "hex");
+export const CTRL_W = Buffer.from("17", "hex");
+export const CTRL_K = Buffer.from("0b", "hex");
 
 export const ESCAPE_CODE = 0x1b;
 export const UNICODE_C0_RANGE = { start: 0x00, end: 0x1f };
