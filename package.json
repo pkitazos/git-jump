@@ -1,6 +1,6 @@
 {
   "name": "@pkitazos/git-jump",
-  "version": "0.3.2",
+  "version": "0.1.0",
   "description": "Git Branches Helper (A modernised fork of the original project)",
   "scripts": {
     "build": "tsc",
