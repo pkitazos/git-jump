@@ -1,10 +1,17 @@
 import {
   BACKSPACE,
+  CMD_LEFT,
+  CMD_RIGHT,
+  CTRL_A,
   CTRL_C,
+  CTRL_E,
+  CTRL_K,
+  CTRL_W,
   DELETE,
   DOWN,
   ENTER,
   ESCAPE_CODE,
+  FN_DELETE,
   LEFT,
   OPT_BACKSPACE,
   OPT_LEFT,
@@ -34,21 +41,22 @@ function isSpecialKey(key: Buffer): boolean {
  * @param key - The raw hexadecimal byte buffer of the pressed key sequence.
  *
  * Supported special key codes
- * - `1b5b44` - left
- * - `1b5b43` - right
- * - `1b5b41` - up
- * - `1b5b42` - down
- * - `1b62` - Option+left, word jump
- * - `1b66` - Option+right, word jump
+ * - `03` - Control+c, exit
+ * - `0d` - Enter
+ * - `1b5b41` - Up
+ * - `1b5b42` - Down
+ * - `1b5b43` - Right
+ * - `1b5b44` - Left
+ * - `1b66` - Option+right, word jump right
+ * - `1b62` - Option+left, word jump left
+ * - `1b7f` - Option+backspace, delete whole word
  * - `1b4f48`, `01` - Cmd+left, Control+a, Home
  * - `1b4f46`, `05` - Cmd+right, Control+e, End
- * - `7f`, `08` - Delete (`08` on Windows)
- * - `0d` - Enter
- * - `1b5b337e` - fn+Delete, Forward Delete
- * - `1b7f` - Option+Delete, delete whole word
+ * - `7f`, `08` - Backspace (`08` on Windows)
+ * - `1b5b337e` - fn+Delete, forward delete
  * - `17` - Control+w, delete the whole line
- * - `0b` - Control+k, delete from cursor to the end of the line
- * - `1b30` .. `1b39` - Alt+0..9
+ * - `0b` - Control+k, delete from cursor to end of line
+ * - `1b30` .. `1b39` - Alt+0..9, quick select
  */
 function handleSpecialKey(key: Buffer, state: AppState): InputResult {
   if (key.equals(CTRL_C)) return { tag: "exit" };
@@ -63,6 +71,19 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
       state: {
         ...state,
         highlightedLineIndex: Math.max(0, state.highlightedLineIndex - 1),
+      },
+    };
+  }
+
+  if (key.equals(DOWN)) {
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        highlightedLineIndex: Math.min(
+          state.list.length - 1,
+          state.highlightedLineIndex + 1,
+        ),
       },
     };
   }
@@ -143,15 +164,74 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
     };
   }
 
-  if (key.equals(DOWN)) {
+  if (key.equals(CMD_LEFT) || key.equals(CTRL_A)) {
     return {
       tag: "stateUpdate",
       state: {
         ...state,
-        highlightedLineIndex: Math.min(
-          state.list.length - 1,
-          state.highlightedLineIndex + 1,
-        ),
+        searchStringCursorPosition: 0,
+      },
+    };
+  }
+
+  if (key.equals(CMD_RIGHT) || key.equals(CTRL_E)) {
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchStringCursorPosition: state.searchString.length,
+      },
+    };
+  }
+
+  if (key.equals(FN_DELETE)) {
+    if (state.searchStringCursorPosition === state.searchString.length) {
+      return { tag: "noop" };
+    }
+
+    const newSearchString = removeAt(
+      state.searchString,
+      state.searchStringCursorPosition,
+    );
+
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchString: newSearchString,
+        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        highlightedLineIndex: 0,
+      },
+    };
+  }
+
+  if (key.equals(CTRL_W)) {
+    const newSearchString = "";
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchString: newSearchString,
+        searchStringCursorPosition: 0,
+        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        highlightedLineIndex: 0,
+      },
+    };
+  }
+
+  if (key.equals(CTRL_K)) {
+    const newSearchString = state.searchString.slice(
+      0,
+      state.searchStringCursorPosition,
+    );
+
+    return {
+      tag: "stateUpdate",
+      state: {
+        ...state,
+        searchString: newSearchString,
+        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        highlightedLineIndex: 0,
       },
     };
   }
