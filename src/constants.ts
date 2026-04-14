@@ -20,6 +20,9 @@ export const LEFT = Buffer.from("1b5b44", "hex");
 export const DELETE = Buffer.from("7f", "hex");
 export const BACKSPACE = Buffer.from("08", "hex");
 export const ENTER = Buffer.from("0d", "hex");
+export const OPT_LEFT = Buffer.from("1b62", "hex");
+export const OPT_RIGHT = Buffer.from("1b66", "hex");
+export const OPT_BACKSPACE = Buffer.from("1b7f", "hex");
 
 export const ESCAPE_CODE = 0x1b;
 export const UNICODE_C0_RANGE = { start: 0x00, end: 0x1f };
