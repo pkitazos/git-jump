@@ -21,6 +21,7 @@ import {
   Message,
   resolveCommandMessage,
   Scene,
+  TScene,
 } from "./types";
 import { bold, formatHelpText, red, yellow } from "./ui";
 
@@ -196,12 +197,14 @@ function deleteSubCommand(config: AppConfig, args: string[]): CommandResult {
   };
 }
 
+type CommandResultMessage = CommandResult extends infer R
+  ? R extends { scene: typeof Scene.MESSAGE }
+    ? R
+    : never
+  : never;
+
 /// side-effect: execute git switch
-export function switchToListItem(item: ListItem): {
-  scene: typeof Scene.MESSAGE;
-  message: Message;
-  exitCode: number;
-} {
+export function switchToListItem(item: ListItem): CommandResultMessage {
   const branchName = getBranchNameForLine(item);
 
   if (item.type === ListItemVariant.HEAD) {
@@ -226,7 +229,7 @@ export function jumpTo(
   args: string[],
   branches: BranchData[],
   currentHEAD: CurrentHEAD,
-): CommandResult {
+): CommandResultMessage {
   const switchResult = gitCommand("switch", args);
 
   if (switchResult.status === 0) {

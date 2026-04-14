@@ -2,16 +2,21 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import * as os from "os";
 import * as fsPath from "path";
 
-import { executeSubCommand, isSubCommand } from "./command";
+import {
+  executeSubCommand,
+  handleError,
+  isSubCommand,
+  jumpTo,
+  switchToListItem,
+} from "./command";
 import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
 import {
-  gitCommand,
   locateGitRepoFolder,
   readCurrentHEAD,
   readRawGitBranches,
 } from "./git";
 import { handleKey } from "./input";
-import { generateList, getBranchNameForLine } from "./list";
+import { generateList } from "./list";
 import { parseKeys } from "./parseKeys";
 import { getAndCleanBranchData } from "./storage";
 import {
@@ -22,253 +27,126 @@ import {
 } from "./system";
 import {
   AppState,
-  errorMessage,
+  BranchData,
+  CommandResult,
+  CurrentHEAD,
   infoMessage,
-  InputError,
   ListItem,
-  ListItemVariant,
   Message,
+  ok,
+  Result,
   Scene,
   State,
 } from "./types";
-import { bold, buildView, clear, green, red, yellow } from "./ui";
+import { bold, clear, green, renderView, yellow } from "./ui";
 import { match } from "./utils";
 
-/**
- * The initial application state instantiated on startup.
- * It immediately captures the current terminal dimensions and defaults to the List scene.
- * It assumes an interactive terminal environment until proven otherwise.
- */
-export const GOD_STATE: State = {
-  rows: process.stdout.rows,
-  columns: process.stdout.columns,
-  isMac: os.type() === "Darwin",
-  maxRows: process.stdout.rows,
-  highlightedLineIndex: 0,
-  branches: [],
-  searchString: "",
-  searchStringCursorPosition: 0,
-  currentHEAD: {
-    detached: false,
-    sha: null,
-    branchName: "",
-  },
-  list: [],
-  scene: Scene.LIST_PLAIN,
-  message: {} as Message,
-  gitRepoFolder: "",
-};
-
 let latestPackageVersion: Promise<string | null> | null = null;
-
-// todo: should return the necessary state change.
-// It actually seems like this just returns a CommandResult??
-function switchToListItem(item: ListItem): void {
-  const branchName = getBranchNameForLine(item);
-
-  // if we picked the branch we're already on
-  if (item.type === ListItemVariant.HEAD) {
-    GOD_STATE.scene = Scene.MESSAGE;
-    GOD_STATE.message = infoMessage([`Staying on ${bold(branchName)}`]);
-    buildView(GOD_STATE);
-    // stat, render and exit
-    process.exit(0);
-  }
-
-  // otherwise try to switch (in the jumpTo we already tried, so it seems like we're trying twice)
-  const { status, message } = gitCommand("switch", [branchName]);
-
-  GOD_STATE.scene = Scene.MESSAGE;
-  // this isn't necessarily an info message and could actually be an error
-  // so we should check the status before committing to either
-  GOD_STATE.message = infoMessage(message);
-
-  buildView(GOD_STATE);
-
-  process.exit(status);
-}
 
 /**
  * Boots the interactive TUI.
  * Renders the initial view, puts the terminal standard input into raw mode,
  * and begins listening to and parsing a continuous stream of keyboard inputs.
  */
-function bare(state: AppState) {
-  buildView(state);
+async function bare(state: AppState) {
+  renderView(state);
 
   process.stdin.setRawMode(true);
 
   process.stdin.on("data", (data: Buffer) => {
-    parseKeys(data).forEach((key) => {
-      const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key);
+    const parsed = parseKeys(data);
+    if (parsed.tag === "err") return;
 
-      const result = handleKey(keyBuffer, state);
+    parsed.value.forEach((key) =>
+      match(handleKey(key, state), "tag", {
+        noop: () => {},
 
-      switch (result.tag) {
-        case "noop":
-          break;
+        stateUpdate: ({ state: patch }) => {
+          state = Object.assign(state, patch);
+          renderView(state);
+        },
 
-        case "stateUpdate":
-          // can clean this up later
-          Object.assign(state, result.state);
-          buildView(state);
-          break;
+        switchTo: ({ item }) => {
+          const cmd = switchToListItem(item);
+          state = applyCommandResult(state, cmd);
+          renderView(state);
+          shutdown(state, cmd.exitCode);
+        },
 
-        case "switchTo":
-          switchToListItem(result.item);
-          // then here we would
-          // 1. take that result
-          // 2. update our state
-          // 3. render
-          break;
-
-        case "exit":
+        exit: () => {
           clear();
-          process.exit();
-          break;
-      }
-    });
-  });
-}
-
-/**
- * Attempts an immediate branch switch based on a provided search string.
- * First tries an exact git switch; if that fails, it generates a fuzzy-matched
- * list of branches and automatically switches to the best match.
- * @param args - The search string or partial branch name provided by the user.
- */
-function jumpTo(args: string[]) {
-  const switchResult = gitCommand("switch", args);
-
-  // if the switch is successful
-  if (switchResult.status === 0) {
-    GOD_STATE.scene = Scene.MESSAGE;
-    GOD_STATE.message = infoMessage(switchResult.message);
-
-    // we render
-    buildView(GOD_STATE);
-
-    // and exit
-    process.exit(0);
-  }
-
-  // otherwise, maybe our switch was not successful?
-  // so maybe we tried to jump to a specific branch?
-  // so ig less check
-
-  // Generate filtered and sorted list of branches
-  GOD_STATE.searchString = args[0];
-  GOD_STATE.list = generateList(
-    GOD_STATE.branches,
-    GOD_STATE.currentHEAD,
-    GOD_STATE.searchString,
-  );
-
-  // if that list is empty
-  if (GOD_STATE.list.length === 0) {
-    GOD_STATE.scene = Scene.MESSAGE;
-    // then we can give the user some feedback and tell them that the string they tried to use to jump does not match
-    GOD_STATE.message = infoMessage([
-      `${bold(yellow(GOD_STATE.searchString))} does not match any branch`,
-    ]);
-
-    buildView(GOD_STATE);
-
-    // and then we exit with an error
-    process.exit(1);
-  }
-
-  // otherwise, switch anyway?
-  switchToListItem(GOD_STATE.list[0]);
-}
-
-function handleError(error: Error): void {
-  // todo: verify that no InputError are ever thrown, that they are only returned.
-  // In which case we would only need the else branch from here
-  if (error instanceof InputError) {
-    GOD_STATE.message = errorMessage(yellow(error.title), error.message);
-  } else {
-    GOD_STATE.message = errorMessage(
-      `${red("Error:")} ${error.message}`,
-      [
-        "",
-        `${bold("What to do?")}`,
-        "Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!",
-        "",
-        `GitHub Issues: https://github.com/pkitazos/git-jump/issues`,
-      ].join("\n"),
+          shutdown(state, 0);
+        },
+      }),
     );
-  }
-
-  GOD_STATE.scene = Scene.MESSAGE;
-  buildView(GOD_STATE);
-  process.exit(1);
-}
-
-/**
- * Before exiting, it compares the latest version of the package that exists
- * with the current version of the installed package.
- * If there is a discrepancy it prints some info to the terminal. This function
- * doesn't really "handle" the "exit" it's more like the "shutdown procedure"
- */
-async function handleExit() {
-  let latestVersion = await latestPackageVersion;
-  if (latestVersion === null) return;
-
-  const { version: currentVersion } = readPackageInfo();
-
-  if (isOlderVersion(currentVersion, latestVersion)) {
-    const sourcePackageManager = existsSync(
-      fsPath.join(__dirname, "../homebrew"),
-    )
-      ? "homebrew"
-      : "npm";
-    const updateCommand =
-      sourcePackageManager === "npm"
-        ? "npm install -g git-jump"
-        : "brew upgrade git-jump";
-
-    GOD_STATE.scene = Scene.MESSAGE;
-
-    let messageContent =
-      GOD_STATE.message.kind === "info" ? GOD_STATE.message.content : [];
-
-    GOD_STATE.message = infoMessage([
-      ...messageContent,
-      "",
-      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(latestVersion)}.`,
-      `Changelog: https://github.com/pkitazos/git-jump/releases/tag/v${latestVersion}`,
-      "",
-      `${bold(updateCommand)} to update.`,
-    ]);
-
-    buildView(GOD_STATE);
-  }
-}
-
-function initialize() {
-  // so because I've converted a lot of my utils to return errors as values
-  // this function will wither become incredibly nested or
-  // we need to set up some kind of monadic bind to be able to handle early return errors
-  // and keep control flow clean
-  const res1 = locateGitRepoFolder(process.cwd());
-
-  match(res1, "tag", {
-    ok: ({ value: gitRepoFolder }) => {
-      GOD_STATE.gitRepoFolder = gitRepoFolder;
-    },
-
-    err: () => new Error("Function not implemented."),
   });
+}
 
-  const jumpFolderPath = fsPath.join(GOD_STATE.gitRepoFolder, JUMP_FOLDER);
-  const dataFileFullPath = fsPath.join(GOD_STATE.gitRepoFolder, DATA_FILE_PATH);
+function buildUpdateMessage(
+  currentVersion: string,
+  latestVersion: string,
+  currentMessage: Message,
+  isHomebrew: boolean,
+): Message {
+  const updateCommand = isHomebrew
+    ? "brew upgrade git-jump"
+    : "npm install -g git-jump";
+
+  const existingContent =
+    currentMessage.kind === "info" ? currentMessage.content : [];
+
+  return infoMessage([
+    ...existingContent,
+    "",
+    `New version of git-jump is available: ${yellow(currentVersion)} → ${green(latestVersion)}.`,
+    `Changelog: https://github.com/pkitazos/git-jump/releases/tag/v${latestVersion}`,
+    "",
+    `${bold(updateCommand)} to update.`,
+  ]);
+}
+
+function applyCommandResult(state: State, cmd: CommandResult): State {
+  if (cmd.scene !== Scene.MESSAGE) return { ...state, scene: cmd.scene };
+  return { ...state, scene: cmd.scene, message: cmd.message };
+}
+
+async function shutdown(state: State, exitCode: number) {
+  const latestVersion = await latestPackageVersion;
+
+  if (latestVersion !== null) {
+    const res = readPackageInfo();
+
+    if (res.tag === "ok" && isOlderVersion(res.value.version, latestVersion)) {
+      const isHomebrew = existsSync(fsPath.join(__dirname, "../homebrew"));
+      state.message = buildUpdateMessage(
+        res.value.version,
+        latestVersion,
+        state.message,
+        isHomebrew,
+      );
+      state.scene = Scene.MESSAGE;
+      renderView(state);
+    }
+  }
+
+  process.exit(exitCode);
+}
+
+type InitData = {
+  gitRepoFolder: string;
+  branches: BranchData[];
+  currentHEAD: CurrentHEAD;
+  list: ListItem[];
+};
+
+function ensureJumpFolder(gitRepoFolder: string) {
+  const jumpFolderPath = fsPath.join(gitRepoFolder, JUMP_FOLDER);
+  const dataFileFullPath = fsPath.join(gitRepoFolder, DATA_FILE_PATH);
 
   if (!existsSync(jumpFolderPath)) {
     mkdirSync(jumpFolderPath);
-    // Exclude .jump from Git tracking
     appendFileSync(
-      fsPath.join(GOD_STATE.gitRepoFolder, ".git", "info", "exclude"),
+      fsPath.join(gitRepoFolder, ".git", "info", "exclude"),
       `\n${JUMP_FOLDER}`,
     );
   }
@@ -276,36 +154,30 @@ function initialize() {
   if (!existsSync(dataFileFullPath)) {
     writeFileSync(dataFileFullPath, "{}", { flag: "a" });
   }
+}
+
+function initialize(): Result<InitData> {
+  const res1 = locateGitRepoFolder(process.cwd());
+  if (res1.tag === "err") return res1;
+
+  const gitRepoFolder = res1.value;
+
+  ensureJumpFolder(gitRepoFolder);
 
   const res2 = readRawGitBranches();
+  if (res2.tag === "err") return res2;
 
-  match(res2, "tag", {
-    ok: ({ value: rawGitBranches }) => {
-      GOD_STATE.branches = getAndCleanBranchData(
-        rawGitBranches,
-        GOD_STATE.gitRepoFolder,
-      );
-    },
+  const res3 = getAndCleanBranchData(res2.value, gitRepoFolder);
+  if (res3.tag === "err") return res3;
+  const branches = res3.value;
 
-    err: () => new Error("Function not implemented."),
-  });
+  const res4 = readCurrentHEAD(gitRepoFolder);
+  if (res4.tag === "err") return res4;
 
-  const res3 = readCurrentHEAD(GOD_STATE.gitRepoFolder);
+  const currentHEAD = res4.value;
+  const list = generateList(branches, currentHEAD, "");
 
-  match(res3, "tag", {
-    ok: ({ value: currHead }) => {
-      GOD_STATE.currentHEAD = currHead;
-    },
-
-    err: () => new Error("Function not implemented."),
-  });
-
-  GOD_STATE.list = generateList(
-    GOD_STATE.branches,
-    GOD_STATE.currentHEAD,
-    GOD_STATE.searchString,
-  );
-  GOD_STATE.highlightedLineIndex = 0;
+  return ok({ gitRepoFolder, branches, currentHEAD, list });
 }
 
 /**
@@ -335,34 +207,65 @@ function main(args: string[]) {
     gitRepoFolder: "",
   };
 
-  process.on("uncaughtException", handleError);
-  process.on("exit", handleExit);
+  process.on("uncaughtException", (error) => {
+    state.message = handleError(error);
+    state.scene = Scene.MESSAGE;
+    renderView(state);
+    process.exit(1);
+  });
 
-  // todo: handle Result
-  ensureNodeVersion();
+  const nodeCheck = ensureNodeVersion();
+  if (nodeCheck.tag === "err") {
+    state.message = handleError(nodeCheck.error);
+    state.scene = Scene.MESSAGE;
+    renderView(state);
+    process.exit(1);
+  }
 
-  // unless we can set up some kind of monad, having this also return a Result
-  // will make the main function very hard to read
-  initialize();
+  const initResult = initialize();
+  if (initResult.tag === "err") {
+    state.message = handleError(initResult.error);
+    state.scene = Scene.MESSAGE;
+    renderView(state);
+    process.exit(1);
+  }
+
+  const { gitRepoFolder, branches, currentHEAD, list } = initResult.value;
+  Object.assign(state, {
+    gitRepoFolder,
+    branches,
+    currentHEAD,
+    list,
+    highlightedLineIndex: 0,
+  });
 
   if (args.length === 0) {
     // Checking for updates only when interactive UI is started
     // as only then there potentially a chance for update
     // request to finish before git-jump exists
+    Object.assign(state, { scene: Scene.LIST_INTERACTIVE });
     latestPackageVersion = fetchLatestVersion();
-    // not actually rendering shit
-    bare(state);
-    return;
+    return bare(state);
   }
 
   if (isSubCommand(args)) {
-    // same here
-    executeSubCommand(state, args[0], args.slice(1));
+    const cmd = executeSubCommand(state, args[0], args.slice(1));
+    state = applyCommandResult(state, cmd);
 
-    return;
+    if (cmd.scene === Scene.LIST_INTERACTIVE) {
+      latestPackageVersion = fetchLatestVersion();
+      return bare(state);
+    }
+
+    renderView(state);
+    process.exit(cmd.exitCode);
   }
 
-  jumpTo(args);
+  const cmd = jumpTo(args, state.branches, state.currentHEAD);
+
+  state = applyCommandResult(state, cmd);
+  renderView(state);
+  process.exit(cmd.exitCode);
 }
 
 main(process.argv.slice(2));
