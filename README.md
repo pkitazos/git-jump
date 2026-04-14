@@ -100,6 +100,28 @@ In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enabl
 
 ![macOS Terminal app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/Terminal-Option-key@2x.png)
 
+### Ghostty
+
+Add the following to your Ghostty config file (`~/.config/ghostty/config`):
+
+```
+macos-option-as-alt = true
+```
+
+> **Note:** A full app restart (not just a new window) may be required for the change to take effect.
+
+### Zed integrated terminal
+
+In your Zed settings (`~/.config/zed/settings.json`), add:
+
+```json
+{
+  "terminal": {
+    "option_as_meta": true
+  }
+}
+```
+
 ### Hyper
 
 Open `.hyper.js` and add next line to the `config` section:

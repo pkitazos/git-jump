@@ -86,11 +86,12 @@ function buildUpdateMessage(
   currentVersion: string,
   latestVersion: string,
   currentMessage: Message,
-  isHomebrew: boolean,
+  // isHomebrew: boolean,
 ): Message {
-  const updateCommand = isHomebrew
-    ? "brew upgrade git-jump"
-    : "npm install -g git-jump";
+  // const updateCommand = isHomebrew
+  //   ? "brew upgrade git-jump"
+  //   : "npm install -g git-jump";
+  const updateCommand = "npm install -g git-jump";
 
   const existingContent =
     currentMessage.kind === "info" ? currentMessage.content : [];
@@ -117,12 +118,12 @@ async function shutdown(state: State, exitCode: number) {
     const res = readPackageInfo();
 
     if (res.tag === "ok" && isOlderVersion(res.value.version, latestVersion)) {
-      const isHomebrew = existsSync(fsPath.join(__dirname, "../homebrew"));
+      // const isHomebrew = existsSync(fsPath.join(__dirname, "../homebrew"));
       state.message = buildUpdateMessage(
         res.value.version,
         latestVersion,
         state.message,
-        isHomebrew,
+        // isHomebrew,
       );
       state.scene = Scene.MESSAGE;
       renderView(state);
