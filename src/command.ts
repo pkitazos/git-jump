@@ -1,19 +1,18 @@
 import { readFileSync } from "fs";
 import * as fsPath from "path";
-import { gitCommand } from "./git";
+import { fetchRemoteBranches, gitCommand } from "./git";
+import { generateList, getBranchNameForLine } from "./list";
 import {
   deleteJumpDataBranch,
   renameJumpDataBranch,
   updateBranchLastSwitch,
 } from "./storage";
 import { readPackageInfo } from "./system";
-import { generateList, getBranchNameForLine } from "./list";
 import {
   AppConfig,
-  BranchData,
   CommandResult,
-  CurrentHEAD,
   errorMessage,
+  GitData,
   infoMessage,
   InputError,
   ListItem,
@@ -21,7 +20,6 @@ import {
   Message,
   resolveCommandMessage,
   Scene,
-  TScene,
 } from "./types";
 import { bold, formatHelpText, red, yellow } from "./ui";
 
@@ -226,10 +224,10 @@ export function switchToListItem(item: ListItem): CommandResultMessage {
 
 /// side-effect: execute git switch
 export function jumpTo(
+  { branches, currentHEAD }: GitData,
   args: string[],
-  branches: BranchData[],
-  currentHEAD: CurrentHEAD,
 ): CommandResultMessage {
+  const target = args[0];
   const switchResult = gitCommand("switch", args);
 
   if (switchResult.status === 0) {
@@ -240,20 +238,41 @@ export function jumpTo(
     };
   }
 
-  const list = generateList(branches, currentHEAD, args[0]);
+  if (args.length === 1) {
+    const remoteResult = fetchRemoteBranches();
 
-  if (list.length === 0) {
-    return {
-      scene: Scene.MESSAGE,
-      message: errorMessage(
-        "No Match",
-        `${bold(yellow(args[0]))} does not match any branch`,
-      ),
-      exitCode: 1,
-    };
+    // If the branch exists as a remote, the switch failure wasn't about the branch name
+    // so we surface the real git error instead of fuzzy searching
+    if (remoteResult.tag === "ok" && remoteResult.value.includes(target)) {
+      return {
+        scene: Scene.MESSAGE,
+        message: errorMessage("Switch Error", switchResult.message.join("\n")),
+        exitCode: 1,
+      };
+    }
+
+    // Otherwise, fall through to fuzzy search on local branches
+    const list = generateList(branches, currentHEAD, target);
+
+    if (list.length === 0) {
+      return {
+        scene: Scene.MESSAGE,
+        message: errorMessage(
+          "No Match",
+          `${bold(yellow(target))} does not match any branch`,
+        ),
+        exitCode: 1,
+      };
+    }
+
+    return switchToListItem(list[0]);
   }
 
-  return switchToListItem(list[0]);
+  return {
+    scene: Scene.MESSAGE,
+    message: errorMessage("Switch Error", switchResult.message.join("\n")),
+    exitCode: 1,
+  };
 }
 
 export function handleError(error: Error): Message {

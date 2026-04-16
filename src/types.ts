@@ -26,8 +26,6 @@ export type UIState = {
  */
 export type AppState = AppConfig & GitData & UIState;
 
-export type State = AppState;
-
 export class InputError extends Error {
   title: string;
 

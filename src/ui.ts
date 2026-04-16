@@ -1,5 +1,6 @@
 import { getQuickSelectLines } from "./list";
 import {
+  AppState,
   BranchData,
   CurrentHEAD,
   LayoutColumn,
@@ -10,7 +11,6 @@ import {
   Message,
   RenderOutput,
   Scene,
-  State,
 } from "./types";
 import { clamp, match } from "./utils";
 
@@ -379,7 +379,7 @@ function buildSearchLine(
  * - LIST (Plain): Computes a raw string dump of branches (used when piping to other commands).
  * - MESSAGE: Computes a padded, text-wrapped message block.
  */
-function buildView(state: State): RenderOutput {
+function buildView(state: AppState): RenderOutput {
   return match(state, "scene", {
     [Scene.MESSAGE]: () => {
       return {
@@ -443,7 +443,7 @@ function render(output: RenderOutput): void {
 
 // --- the main public-facing API
 
-export function renderView(state: State) {
+export function renderView(state: AppState) {
   render(buildView(state));
 }
 

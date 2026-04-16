@@ -118,3 +118,35 @@ export function gitCommand(command: string, args: string[]): GitCommandResult {
     message: [...cleanLines(stdout), ...cleanLines(stderr)],
   };
 }
+
+export function fetchRemoteBranches(): Result<string[]> {
+  const { stdout, stderr, error, status } = spawnSync(
+    "git",
+    ["branch", "-r", "--format=%(refname:short)"],
+    { encoding: "utf-8" },
+  );
+
+  if (error || status !== 0) {
+    return {
+      tag: "err",
+      error: new InputError(
+        "Git Command Failed",
+        error ? error.message : stderr,
+      ),
+    };
+  }
+
+  const extractedBranchNames = stdout
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      const slashIndex = trimmed.indexOf("/");
+      if (slashIndex === -1) return "";
+      return trimmed.slice(slashIndex + 1);
+    })
+    .filter((x) => x !== "");
+
+  const uniqueBranches = new Set(extractedBranchNames);
+
+  return { tag: "ok", value: [...uniqueBranches] };
+}

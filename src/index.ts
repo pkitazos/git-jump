@@ -26,17 +26,19 @@ import {
   readPackageInfo,
 } from "./system";
 import {
+  AppConfig,
   AppState,
   BranchData,
   CommandResult,
   CurrentHEAD,
+  GitData,
   infoMessage,
   ListItem,
   Message,
   ok,
   Result,
   Scene,
-  State,
+  UIState,
 } from "./types";
 import { bold, clear, green, renderView, yellow } from "./ui";
 import { match } from "./utils";
@@ -106,12 +108,12 @@ function buildUpdateMessage(
   ]);
 }
 
-function applyCommandResult(state: State, cmd: CommandResult): State {
+function applyCommandResult(state: AppState, cmd: CommandResult): AppState {
   if (cmd.scene !== Scene.MESSAGE) return { ...state, scene: cmd.scene };
   return { ...state, scene: cmd.scene, message: cmd.message };
 }
 
-async function shutdown(state: State, exitCode: number) {
+async function shutdown(state: AppState, exitCode: number) {
   const latestVersion = await latestPackageVersion;
 
   if (latestVersion !== null) {
@@ -188,24 +190,39 @@ function initialize(): Result<InitData> {
  * @param args - The command-line arguments passed to the script (excluding node and script paths).
  */
 function main(args: string[]) {
-  let state: State = {
+  let appConfig: AppConfig = {
     rows: process.stdout.rows,
     columns: process.stdout.columns,
-    isMac: os.type() === "Darwin",
     maxRows: process.stdout.rows,
+    isMac: os.type() === "Darwin",
+    gitRepoFolder: "",
+  };
+
+  let ui: UIState = {
     highlightedLineIndex: 0,
-    branches: [],
     searchString: "",
     searchStringCursorPosition: 0,
+    list: [],
+    scene: "list_plain",
+    message: {
+      kind: "info",
+      content: [],
+    },
+  };
+
+  let gitData: GitData = {
+    branches: [],
     currentHEAD: {
       detached: false,
       sha: null,
       branchName: "",
     },
-    list: [],
-    scene: Scene.LIST_PLAIN,
-    message: { kind: "info", content: [] },
-    gitRepoFolder: "",
+  };
+
+  let state: AppState = {
+    ...appConfig,
+    ...ui,
+    ...gitData,
   };
 
   process.on("uncaughtException", (error) => {
@@ -262,7 +279,7 @@ function main(args: string[]) {
     process.exit(cmd.exitCode);
   }
 
-  const cmd = jumpTo(args, state.branches, state.currentHEAD);
+  const cmd = jumpTo(state, args);
 
   state = applyCommandResult(state, cmd);
   renderView(state);

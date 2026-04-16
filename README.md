@@ -43,7 +43,7 @@ Run without arguments to launch the interactive UI.
 ```shell
 git jump <branch name>
 ```
-Switches to a branch. `<branch name>` can be just part of the name, `git jump` will look for the best matching branch.
+Switches to a branch. When a single argument is provided, `<branch name>` can be just part of the name — `git jump` will look for the best matching local branch if `git switch` doesn't find an exact match.
 
 <br />
 
@@ -55,10 +55,10 @@ Shows a plain list of branches without interactive UI but with sorting.
 <br />
 
 ```shell
-git jump <any native switch arguments>
+git jump <branch name> <any native switch arguments>
 ```
 
-You can use `git jump` as a drop-in replacement for [native `git switch`](https://git-scm.com/docs/git-switch). `git jump` will proxy all the argument to the native command, so you don't have to think to use one or the other.
+You can use `git jump` as a drop-in replacement for [native `git switch`](https://git-scm.com/docs/git-switch). When additional arguments are provided, `git jump` proxies everything directly to `git switch` without fuzzy matching, so `<branch name>` must be exact. This mirrors the behavior of the interactive mode, where switching also requires an exact branch name.
 
 For example `git jump my-branch --discard-changes` works just fine.
 
