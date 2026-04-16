@@ -21,7 +21,7 @@ import {
   resolveCommandMessage,
   Scene,
 } from "./types";
-import { bold, formatHelpText, red, yellow } from "./ui";
+import { bold, formatHelpText, red } from "./ui";
 
 export function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
@@ -272,7 +272,7 @@ export function jumpTo(
         scene: Scene.MESSAGE,
         message: errorMessage(
           "No Match",
-          `${bold(yellow(target))} does not match any branch`,
+          `${bold(target)} does not match any branch`,
         ),
         exitCode: 1,
       };
@@ -290,7 +290,7 @@ export function jumpTo(
 
 export function handleError(error: Error): Message {
   if (error instanceof InputError) {
-    return errorMessage(yellow(error.title), error.message);
+    return errorMessage(red(error.title), error.message);
   }
 
   return errorMessage(
