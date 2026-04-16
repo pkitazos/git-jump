@@ -228,6 +228,19 @@ export function jumpTo(
   args: string[],
 ): CommandResultMessage {
   const target = args[0];
+
+  if (
+    args.length === 1 &&
+    !currentHEAD.detached &&
+    target === currentHEAD.branchName
+  ) {
+    return {
+      scene: Scene.MESSAGE,
+      message: infoMessage([`Staying on ${bold(currentHEAD.branchName)}`]),
+      exitCode: 0,
+    };
+  }
+
   const switchResult = gitCommand("switch", args);
 
   if (switchResult.status === 0) {
