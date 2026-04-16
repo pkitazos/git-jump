@@ -88,17 +88,13 @@ Deletes one or multiple branches. No fuzzy matching here, of course 🙂.
 
 It might be disabled by default in your terminal, here is how to make it work in some apps.
 
-### iTerm 2
+### VS Code integrated terminal
 
-In Preferences go to `Profiles`, select your profile and go to `Keys`. At the bottom set `Left Option (⌥) Key` to `Esc+`.
+In your VS Code settings (`settings.json`), add:
 
-![iTerm 2 app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/iTerm-Option-key@2x.png)
-
-### macOS Terminal
-
-In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enable `Use Option as Meta key` checkbox.
-
-![macOS Terminal app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/Terminal-Option-key@2x.png)
+```json
+"terminal.integrated.macOptionIsMeta": true
+```
 
 ### Ghostty
 
@@ -121,6 +117,18 @@ In your Zed settings (`~/.config/zed/settings.json`), add:
   }
 }
 ```
+
+### iTerm 2
+
+In Preferences go to `Profiles`, select your profile and go to `Keys`. At the bottom set `Left Option (⌥) Key` to `Esc+`.
+
+![iTerm 2 app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/iTerm-Option-key@2x.png)
+
+### macOS Terminal
+
+In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enable `Use Option as Meta key` checkbox.
+
+![macOS Terminal app preferences window](https://raw.githubusercontent.com/pkitazos/git-jump/main/img/Terminal-Option-key@2x.png)
 
 ### Hyper
 
