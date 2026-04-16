@@ -4,6 +4,9 @@ Git Branches Helper
     {dim}${/dim} git jump <fuzzy branch name>
       Switches to the best matching branch.
 
+    {dim}${/dim} git jump <branch name> <native switch arguments>
+      {wrap:6}Drop-in replacement for "git switch". With additional arguments, passes through to "git switch" directly without fuzzy matching.{/wrap}
+
     {dim}${/dim} git jump
       Starts interactive interface.
 
