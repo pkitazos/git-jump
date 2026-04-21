@@ -3,8 +3,8 @@
 ## Publish new NPM package
 
 1. Update `CHANGELOG.md`, `docs/help.txt`, and `docs/git-jump.1` if needed
-2. Commit changes
-3. `pnpm version <major | minor | patch>`
+2. Commit the docs changes (e.g. `chore: update changelog`)
+3. `pnpm version <major | minor | patch>` creates the version-bump commit and tag
 4. `git push origin HEAD --tags`
 5. `pnpm publish --access public`
 

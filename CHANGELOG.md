@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-04-21
+
+### Added
+- Worktree support. `git jump` now works from inside linked worktrees, which previously failed with `"You're not in Git repo. There is no Git repository in current or any parent folder."`
+- Branches checked out in other worktrees are listed at the bottom with their worktree path, they are shown for visibility but are not selectable.
+
 ## [0.1.3] - 2026-04-17
 
 ### Fixed
