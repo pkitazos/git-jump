@@ -10,9 +10,10 @@ import {
 import { readPackageInfo } from "./system";
 import {
   AppConfig,
+  AppState,
   CommandResult,
   errorMessage,
-  GitData,
+  getCurrentHEAD,
   infoMessage,
   InputError,
   ListItem,
@@ -114,7 +115,7 @@ function newSubCommand(config: AppConfig, args: string[]): CommandResult {
   const { status, message } = gitCommand("switch", ["--create", ...args]);
 
   if (status === 0) {
-    updateBranchLastSwitch(args[0], Date.now(), config.gitRepoFolder);
+    updateBranchLastSwitch(args[0], Date.now(), config.mainWorktreeDir);
   }
 
   return {
@@ -172,7 +173,7 @@ function renameSubCommand(config: AppConfig, args: string[]): CommandResult {
     };
   }
 
-  renameJumpDataBranch(args[0], args[1], config.gitRepoFolder);
+  renameJumpDataBranch(args[0], args[1], config.mainWorktreeDir);
   message.push("Renamed.");
 
   return {
@@ -186,7 +187,7 @@ function renameSubCommand(config: AppConfig, args: string[]): CommandResult {
 function deleteSubCommand(config: AppConfig, args: string[]): CommandResult {
   const { status, message } = gitCommand("branch", ["--delete", ...args]);
 
-  if (status === 0) deleteJumpDataBranch(args, config.gitRepoFolder);
+  if (status === 0) deleteJumpDataBranch(args, config.mainWorktreeDir);
 
   return {
     scene: Scene.MESSAGE,
@@ -224,19 +225,20 @@ export function switchToListItem(item: ListItem): CommandResultMessage {
 
 /// side-effect: execute git switch
 export function jumpTo(
-  { branches, currentHEAD }: GitData,
+  { activeWorktreeDir, branches, worktrees }: AppState,
   args: string[],
 ): CommandResultMessage {
   const target = args[0];
+  const curr = worktrees.find((w) => w.dir === activeWorktreeDir)!;
 
   if (
     args.length === 1 &&
-    !currentHEAD.detached &&
-    target === currentHEAD.branchName
+    !curr.HEAD.detached &&
+    target === curr.HEAD.branchName
   ) {
     return {
       scene: Scene.MESSAGE,
-      message: infoMessage([`Staying on ${bold(currentHEAD.branchName)}`]),
+      message: infoMessage([`Staying on ${bold(curr.HEAD.branchName)}`]),
       exitCode: 0,
     };
   }
@@ -265,7 +267,7 @@ export function jumpTo(
     }
 
     // Otherwise, fall through to fuzzy search on local branches
-    const list = generateList(branches, currentHEAD, target);
+    const list = generateList(branches, curr.HEAD, target);
 
     if (list.length === 0) {
       return {

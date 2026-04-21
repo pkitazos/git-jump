@@ -1,12 +1,13 @@
 import { fuzzyMatch } from "./fuzzy";
 import {
-  BranchData,
   CurrentHEAD,
+  DisplayBranchData,
   ListItem,
   ListItemVariant,
   ListSortCriterion,
   type TListSortCriterion,
 } from "./types";
+import { match } from "./utils";
 
 /**
  * Generates the final, sorted, and filtered list of items to display in the terminal.
@@ -17,7 +18,7 @@ import {
  * @returns An array of ListItem objects ready for the rendering engine.
  */
 export function generateList(
-  branches: BranchData[],
+  branches: DisplayBranchData[],
   currentHEAD: CurrentHEAD,
   searchString: string,
 ) {
@@ -37,18 +38,14 @@ export function generateList(
 
   const branchLines: ListItem[] = branches
     // Filter out current branch if HEAD is not detached,
-    // because current branch will be displayed as the first list
-    .filter((branch) => {
-      return currentHEAD.detached || branch.name !== currentHEAD.branchName;
-    })
-    .map((branch: BranchData) => {
-      return {
-        type: ListItemVariant.BRANCH,
-        content: branch,
-        searchMatchScore:
-          searchString === "" ? 1 : fuzzyMatch(searchString, branch.name),
-      };
-    });
+    // because current branch will be displayed as the first item in the list
+    .filter((b) => currentHEAD.detached || b.name !== currentHEAD.branchName)
+    .map((branch) => ({
+      type: ListItemVariant.BRANCH,
+      content: branch,
+      searchMatchScore:
+        searchString === "" ? 1 : fuzzyMatch(searchString, branch.name),
+    }));
 
   list = list
     .concat(branchLines)
@@ -74,15 +71,10 @@ export function getQuickSelectLines(list: ListItem[]): ListItem[] {
  * and it's detached.
  */
 export function getBranchNameForLine(line: ListItem): string {
-  switch (line.type) {
-    case ListItemVariant.HEAD: {
-      return line.content.detached ? line.content.sha : line.content.branchName;
-    }
-
-    case ListItemVariant.BRANCH: {
-      return line.content.name;
-    }
-  }
+  return match(line, "type", {
+    head: (l) => (l.content.detached ? l.content.sha : l.content.branchName),
+    branch: (l) => l.content.name,
+  });
 }
 
 function sortedListLines(
@@ -90,19 +82,25 @@ function sortedListLines(
   criterion: TListSortCriterion,
 ): ListItem[] {
   if (criterion === ListSortCriterion.LAST_SWITCH) {
-    return list.slice().sort((a: ListItem, b: ListItem) => {
-      if (b.type === ListItemVariant.HEAD) {
-        return 1;
-      }
+    return list.slice().sort((a, b) => {
+      // HEAD always first
+      if (a.type === ListItemVariant.HEAD) return -1;
+      if (b.type === ListItemVariant.HEAD) return 1;
 
-      return (
-        (b.content as BranchData).lastSwitch -
-        (a.content as BranchData).lastSwitch
-      );
+      // Disabled rows always last
+      const aDisabled = (a.content as DisplayBranchData).checkedOutIn !== null;
+      const bDisabled = (b.content as DisplayBranchData).checkedOutIn !== null;
+      if (aDisabled !== bDisabled) return aDisabled ? 1 : -1;
+
+      return criterion === ListSortCriterion.LAST_SWITCH
+        ? b.content.lastSwitch - a.content.lastSwitch
+        : b.searchMatchScore - a.searchMatchScore;
     });
   }
 
-  return list.slice().sort((a: ListItem, b: ListItem) => {
-    return b.searchMatchScore - a.searchMatchScore;
-  });
+  return list
+    .slice()
+    .sort(
+      (a: ListItem, b: ListItem) => b.searchMatchScore - a.searchMatchScore,
+    );
 }

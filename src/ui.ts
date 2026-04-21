@@ -1,8 +1,8 @@
 import { getQuickSelectLines } from "./list";
 import {
   AppState,
-  BranchData,
   CurrentHEAD,
+  DisplayBranchData,
   LayoutColumn,
   LayoutColumnVariant,
   LinesWindow,
@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { clamp, match } from "./utils";
 
+const HEAD_INDEX_PADD = " * ";
 const BRANCH_INDEX_PADD = "   ";
 const LINE_SPACER = "  ";
 
@@ -51,6 +52,10 @@ function truncate(s: string, maxWidth: number): string {
   const truncated = s.slice(0, maxWidth);
   if (truncated.length >= s.length) return truncated;
   return `${truncated.substring(0, truncated.length - 1)}…`;
+}
+
+function fitWidth(s: string, width: number): string {
+  return truncate(s, width).padEnd(width, " ");
 }
 
 // this just takes a string and a column width, splits it on spaces, and packs the words back
@@ -108,31 +113,35 @@ function calculateLinesWindow(
   return { topIndex, bottomIndex };
 }
 
+const INDEX_WIDTH = 3;
+const MIN_TRAILING = 5; // keep at least this much for columns to the right
+const PATH_LEADING_PAD = 3; // gap between branch name and path
+
+function eat(desired: number, available: number): [number, number] {
+  const taken = clamp(desired, 0, Math.max(0, available - MIN_TRAILING));
+  return [taken, available - taken];
+}
+
 function calculateInteractiveLayout(
   terminalColumns: number,
-  branches: BranchData[],
+  branches: DisplayBranchData[],
 ): LayoutColumn[] {
-  const indexColumnWidth = 3;
-  const moreIndicatorColumnWidth = 5;
-
-  const maxBranchLength =
-    branches.length > 0 ? Math.max(...branches.map((b) => b.name.length)) : 0;
-
-  const branchNameColumnWidth = clamp(
-    terminalColumns - indexColumnWidth - moreIndicatorColumnWidth,
+  const maxBranchLength = Math.max(0, ...branches.map((b) => b.name.length));
+  const maxPathLength = Math.max(
     0,
-    maxBranchLength,
+    ...branches.map((b) => b.checkedOutIn?.length ?? 0),
   );
+  const pathDesired = maxPathLength > 0 ? maxPathLength + PATH_LEADING_PAD : 0;
 
-  const remainingWidth = Math.max(
-    0,
-    terminalColumns - indexColumnWidth - branchNameColumnWidth,
-  );
+  const initial = terminalColumns - INDEX_WIDTH;
+  const [branchNameWidth, afterName] = eat(maxBranchLength, initial);
+  const [worktreePathWidth, afterPath] = eat(pathDesired, afterName);
 
   return [
-    { type: LayoutColumnVariant.INDEX, width: indexColumnWidth },
-    { type: LayoutColumnVariant.BRANCH_NAME, width: branchNameColumnWidth },
-    { type: LayoutColumnVariant.MORE_INDICATOR, width: remainingWidth },
+    { type: LayoutColumnVariant.INDEX, width: INDEX_WIDTH },
+    { type: LayoutColumnVariant.BRANCH_NAME, width: branchNameWidth },
+    { type: LayoutColumnVariant.WORKTREE_PATH, width: worktreePathWidth },
+    { type: LayoutColumnVariant.MORE_INDICATOR, width: Math.max(0, afterPath) },
   ];
 }
 
@@ -170,13 +179,14 @@ function formatHEAD(currentHEAD: CurrentHEAD, layout: LayoutColumn[]): string {
   return layout
     .map((column: LayoutColumn) =>
       match(column, "type", {
-        [LayoutColumnVariant.INDEX]: () => BRANCH_INDEX_PADD,
+        [LayoutColumnVariant.INDEX]: () => HEAD_INDEX_PADD,
 
-        [LayoutColumnVariant.BRANCH_NAME]: () => {
-          return currentHEAD.detached
-            ? `${bold(currentHEAD.sha)} ${dim("(detached)")}`
-            : bold(currentHEAD.branchName);
-        },
+        [LayoutColumnVariant.BRANCH_NAME]: () =>
+          currentHEAD.detached
+            ? bold(currentHEAD.sha) + ` ${dim("(detached)")}`
+            : bold(currentHEAD.branchName),
+
+        [LayoutColumnVariant.WORKTREE_PATH]: () => "",
 
         [LayoutColumnVariant.MORE_INDICATOR]: () => "",
       }),
@@ -187,18 +197,28 @@ function formatHEAD(currentHEAD: CurrentHEAD, layout: LayoutColumn[]): string {
 // like formatHEAD but the index column shows the quick-select number (only for 0-9, otherwise blank padding)
 // and the branch name gets truncated/padded to fit the column width.
 function formatBranch(
-  branch: BranchData,
+  branch: DisplayBranchData,
   layout: LayoutColumn[],
   index: number,
 ): string {
   return layout
     .map((column) =>
       match(column, "type", {
-        [LayoutColumnVariant.INDEX]: () =>
-          index < 10 ? ` ${dim(index.toString())} ` : BRANCH_INDEX_PADD,
+        [LayoutColumnVariant.INDEX]: () => {
+          if (branch.checkedOutIn !== null) return BRANCH_INDEX_PADD;
+          if (index >= 10) return BRANCH_INDEX_PADD;
+          return ` ${dim(index.toString())} `;
+        },
+        [LayoutColumnVariant.BRANCH_NAME]: () => {
+          const row = fitWidth(branch.name, column.width);
+          return branch.checkedOutIn !== null ? dim(row) : row;
+        },
 
-        [LayoutColumnVariant.BRANCH_NAME]: () =>
-          truncate(branch.name, column.width).padEnd(column.width, " "),
+        [LayoutColumnVariant.WORKTREE_PATH]: () => {
+          if (branch.checkedOutIn === null) return " ".repeat(column.width);
+          const text = `  ${branch.checkedOutIn}`;
+          return dim(fitWidth(text, column.width));
+        },
 
         [LayoutColumnVariant.MORE_INDICATOR]: () => "",
       }),
@@ -226,7 +246,7 @@ const SEARCH_PLACEHOLDER = "Search";
 function formatSearchField(searchString: string, width: number): string {
   return searchString === ""
     ? dim(SEARCH_PLACEHOLDER.padEnd(width, " "))
-    : truncate(searchString, width).padEnd(width, " ");
+    : fitWidth(searchString, width);
 }
 
 /**
@@ -301,7 +321,7 @@ function buildPlainList(list: ListItem[], columns: number): string[] {
 
 function buildInteractiveList(
   list: ListItem[],
-  branches: BranchData[],
+  branches: DisplayBranchData[],
   columns: number,
   rows: number,
   highlightedLineIndex: number,

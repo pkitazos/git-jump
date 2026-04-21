@@ -11,8 +11,9 @@ import {
 } from "./command";
 import { DATA_FILE_PATH, JUMP_FOLDER } from "./constants";
 import {
-  locateGitRepoFolder,
-  readCurrentHEAD,
+  enrichBranches,
+  listWorktrees,
+  locateGitRepoDirs,
   readRawGitBranches,
 } from "./git";
 import { handleKey } from "./input";
@@ -28,9 +29,8 @@ import {
 import {
   AppConfig,
   AppState,
-  BranchData,
   CommandResult,
-  CurrentHEAD,
+  DisplayBranchData,
   GitData,
   infoMessage,
   ListItem,
@@ -39,6 +39,7 @@ import {
   Result,
   Scene,
   UIState,
+  Worktree,
 } from "./types";
 import { bold, clear, green, renderView, yellow } from "./ui";
 import { match } from "./utils";
@@ -136,20 +137,21 @@ async function shutdown(state: AppState, exitCode: number) {
 }
 
 type InitData = {
-  gitRepoFolder: string;
-  branches: BranchData[];
-  currentHEAD: CurrentHEAD;
+  mainWorktreeDir: string;
+  activeWorktreeDir: string;
+  worktrees: Worktree[];
+  branches: DisplayBranchData[];
   list: ListItem[];
 };
 
-function ensureJumpFolder(gitRepoFolder: string) {
-  const jumpFolderPath = fsPath.join(gitRepoFolder, JUMP_FOLDER);
-  const dataFileFullPath = fsPath.join(gitRepoFolder, DATA_FILE_PATH);
+function ensureJumpFolder(mainWorktreeDir: string) {
+  const jumpFolderPath = fsPath.join(mainWorktreeDir, JUMP_FOLDER);
+  const dataFileFullPath = fsPath.join(mainWorktreeDir, DATA_FILE_PATH);
 
   if (!existsSync(jumpFolderPath)) {
     mkdirSync(jumpFolderPath);
     appendFileSync(
-      fsPath.join(gitRepoFolder, ".git", "info", "exclude"),
+      fsPath.join(mainWorktreeDir, ".git/info/exclude"),
       `\n${JUMP_FOLDER}`,
     );
   }
@@ -160,27 +162,41 @@ function ensureJumpFolder(gitRepoFolder: string) {
 }
 
 function initialize(): Result<InitData> {
-  const res1 = locateGitRepoFolder(process.cwd());
-  if (res1.tag === "err") return res1;
+  const repoDirsRes = locateGitRepoDirs(process.cwd());
+  if (repoDirsRes.tag === "err") return repoDirsRes;
 
-  const gitRepoFolder = res1.value;
+  const { activeWorktreeDir, mainWorktreeDir } = repoDirsRes.value;
 
-  ensureJumpFolder(gitRepoFolder);
+  ensureJumpFolder(mainWorktreeDir);
 
-  const res2 = readRawGitBranches();
-  if (res2.tag === "err") return res2;
+  const rawBranchesRes = readRawGitBranches();
+  if (rawBranchesRes.tag === "err") return rawBranchesRes;
+  const rawBranches = rawBranchesRes.value;
 
-  const res3 = getAndCleanBranchData(res2.value, gitRepoFolder);
-  if (res3.tag === "err") return res3;
-  const branches = res3.value;
+  const worktreesRes = listWorktrees();
+  if (worktreesRes.tag === "err") return worktreesRes;
+  const worktrees = worktreesRes.value;
 
-  const res4 = readCurrentHEAD(gitRepoFolder);
-  if (res4.tag === "err") return res4;
+  const cleanBranchesRes = getAndCleanBranchData(rawBranches, mainWorktreeDir);
+  if (cleanBranchesRes.tag === "err") return cleanBranchesRes;
 
-  const currentHEAD = res4.value;
+  const branches = enrichBranches(
+    cleanBranchesRes.value,
+    worktrees,
+    activeWorktreeDir,
+  );
+
+  const currentHEAD = worktrees.find((w) => w.dir === activeWorktreeDir)!.HEAD;
+
   const list = generateList(branches, currentHEAD, "");
 
-  return ok({ gitRepoFolder, branches, currentHEAD, list });
+  return ok({
+    activeWorktreeDir,
+    mainWorktreeDir,
+    worktrees,
+    branches,
+    list,
+  });
 }
 
 /**
@@ -195,7 +211,8 @@ function main(args: string[]) {
     columns: process.stdout.columns,
     maxRows: process.stdout.rows,
     isMac: os.type() === "Darwin",
-    gitRepoFolder: "",
+    mainWorktreeDir: "",
+    activeWorktreeDir: "",
   };
 
   let ui: UIState = {
@@ -212,11 +229,7 @@ function main(args: string[]) {
 
   let gitData: GitData = {
     branches: [],
-    currentHEAD: {
-      detached: false,
-      sha: null,
-      branchName: "",
-    },
+    worktrees: [],
   };
 
   let state: AppState = {
@@ -248,12 +261,8 @@ function main(args: string[]) {
     process.exit(1);
   }
 
-  const { gitRepoFolder, branches, currentHEAD, list } = initResult.value;
   Object.assign(state, {
-    gitRepoFolder,
-    branches,
-    currentHEAD,
-    list,
+    ...initResult.value,
     highlightedLineIndex: 0,
   });
 

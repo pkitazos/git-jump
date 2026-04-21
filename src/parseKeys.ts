@@ -1,6 +1,5 @@
 import { StringDecoder } from "string_decoder";
 import { err, ok, Result } from "./types";
-import { handleError } from "./command";
 
 // Control Sequence Format
 // 1b (5b|4f) [number] [; number]+ (Letter or ~)

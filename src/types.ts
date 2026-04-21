@@ -1,5 +1,6 @@
 export type AppConfig = {
-  gitRepoFolder: string;
+  mainWorktreeDir: string; // used to read jump data
+  activeWorktreeDir: string; // used to read currentHEAD
   isMac: boolean;
   rows: number;
   columns: number;
@@ -7,8 +8,14 @@ export type AppConfig = {
 };
 
 export type GitData = {
-  branches: BranchData[];
-  currentHEAD: CurrentHEAD;
+  branches: DisplayBranchData[];
+  worktrees: Worktree[];
+  // currentHEAD: worktrees.find(w => w.dir === activeWorktreeDir)
+};
+
+export type Worktree = {
+  dir: string; // where on the disc is this worktree
+  HEAD: CurrentHEAD; // what branch is checked out
 };
 
 export type UIState = {
@@ -77,6 +84,10 @@ export type BranchData = {
   lastSwitch: number;
 };
 
+export type DisplayBranchData = Prettify<
+  BranchData & { checkedOutIn: string | null }
+>;
+
 /**
  * Represents the current state of the working directory's HEAD.
  * Tracks whether the HEAD is detached, its commit hash, and the active branch name.
@@ -84,6 +95,12 @@ export type BranchData = {
 export type CurrentHEAD =
   | { detached: true; sha: string; branchName: null }
   | { detached: false; sha: null; branchName: string };
+
+export function getCurrentHEAD(state: AppState): CurrentHEAD {
+  const curr = state.worktrees.find((w) => w.dir === state.activeWorktreeDir);
+  if (!curr) throw new Error("Cannot find active directory HEAD");
+  return curr.HEAD;
+}
 
 /**
  * A dictionary mapping branch names to their respective BranchData.
@@ -108,7 +125,7 @@ export type ListItem =
     }
   | {
       type: typeof ListItemVariant.BRANCH;
-      content: BranchData;
+      content: DisplayBranchData;
       searchMatchScore: number;
     };
 
@@ -149,6 +166,7 @@ export type LinesWindow = { topIndex: number; bottomIndex: number };
 export const LayoutColumnVariant = {
   INDEX: "Index",
   BRANCH_NAME: "BranchName",
+  WORKTREE_PATH: "WorktreePath",
   MORE_INDICATOR: "MoreIndicator",
 } as const;
 
@@ -195,6 +213,10 @@ export const ListSortCriterion = {
 export type TListSortCriterion =
   (typeof ListSortCriterion)[keyof typeof ListSortCriterion];
 
+type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};
+
 export type Result<T> = { tag: "ok"; value: T } | { tag: "err"; error: Error };
 
 export function ok<T>(value: T): Result<T> {
@@ -203,4 +225,13 @@ export function ok<T>(value: T): Result<T> {
 
 export function err<T>(error: Error): Result<T> {
   return { tag: "err", error };
+}
+
+export function sequence<T>(results: Result<T>[]): Result<T[]> {
+  const values: T[] = [];
+  for (const r of results) {
+    if (r.tag === "err") return r;
+    values.push(r.value);
+  }
+  return ok(values);
 }

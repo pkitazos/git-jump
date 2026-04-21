@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import * as fsPath from "path";
 import { DATA_FILE_PATH } from "./constants";
-import { BranchData, BranchDataCollection, Result, ok, err } from "./types";
+import { BranchData, BranchDataCollection, Result, err, ok } from "./types";
 
 // --- adapters
 

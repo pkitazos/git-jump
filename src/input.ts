@@ -22,7 +22,7 @@ import {
   UP,
 } from "./constants";
 import { generateList, getQuickSelectLines } from "./list";
-import { AppState, InputResult } from "./types";
+import { AppState, getCurrentHEAD, InputResult } from "./types";
 
 export function handleKey(key: Buffer, state: AppState): InputResult {
   return isSpecialKey(key)
@@ -59,6 +59,8 @@ function isSpecialKey(key: Buffer): boolean {
  * - `1b30` .. `1b39` - Alt+0..9, quick select
  */
 function handleSpecialKey(key: Buffer, state: AppState): InputResult {
+  const currentHEAD = getCurrentHEAD(state);
+
   if (key.equals(CTRL_C)) return { tag: "exit" };
 
   if (key.equals(ENTER)) {
@@ -76,12 +78,16 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
   }
 
   if (key.equals(DOWN)) {
+    const availableBranches = state.branches
+      .filter((x) => x.checkedOutIn === null)
+      .reduce((sum, _) => sum + 1, 0);
+
     return {
       tag: "stateUpdate",
       state: {
         ...state,
         highlightedLineIndex: Math.min(
-          state.list.length - 1,
+          availableBranches - 1,
           state.highlightedLineIndex + 1,
         ),
       },
@@ -158,7 +164,7 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
         ...state,
         searchString: newSearchString,
         searchStringCursorPosition: stopAt,
-        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        list: generateList(state.branches, currentHEAD, newSearchString),
         highlightedLineIndex: 0,
       },
     };
@@ -199,7 +205,7 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
       state: {
         ...state,
         searchString: newSearchString,
-        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        list: generateList(state.branches, currentHEAD, newSearchString),
         highlightedLineIndex: 0,
       },
     };
@@ -213,7 +219,7 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
         ...state,
         searchString: newSearchString,
         searchStringCursorPosition: 0,
-        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        list: generateList(state.branches, currentHEAD, newSearchString),
         highlightedLineIndex: 0,
       },
     };
@@ -230,7 +236,7 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
       state: {
         ...state,
         searchString: newSearchString,
-        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        list: generateList(state.branches, currentHEAD, newSearchString),
         highlightedLineIndex: 0,
       },
     };
@@ -252,7 +258,7 @@ function handleSpecialKey(key: Buffer, state: AppState): InputResult {
         ...state,
         searchString: newSearchString,
         searchStringCursorPosition: state.searchStringCursorPosition - 1,
-        list: generateList(state.branches, state.currentHEAD, newSearchString),
+        list: generateList(state.branches, currentHEAD, newSearchString),
         highlightedLineIndex: 0,
       },
     };
@@ -287,6 +293,8 @@ function handleStringKey(key: Buffer, state: AppState): InputResult {
     inputString,
   );
 
+  const currentHEAD = getCurrentHEAD(state);
+
   return {
     tag: "stateUpdate",
     state: {
@@ -294,7 +302,7 @@ function handleStringKey(key: Buffer, state: AppState): InputResult {
       searchString: newSearchString,
       searchStringCursorPosition:
         state.searchStringCursorPosition + inputString.length,
-      list: generateList(state.branches, state.currentHEAD, newSearchString),
+      list: generateList(state.branches, currentHEAD, newSearchString),
       highlightedLineIndex: 0,
     },
   };
