@@ -1,6 +1,6 @@
 {
   "name": "@pkitazos/git-jump",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Git Branches Helper (A modernised fork of the original project)",
   "scripts": {
     "build": "tsc",
@@ -49,7 +49,7 @@
     "node": ">=20.0.0",
     "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@10.33.2",
   "keywords": [
     "git",
     "cli",
