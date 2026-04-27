@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Windows: `git jump` no longer recurses past the filesystem root when run outside a git repo (the `folder === "/"` termination check never matched on Windows roots like `C:\`).
+- Windows: worktree path lookups no longer fail because of separator/case mismatches between git's forward-slash output and `process.cwd()`'s native paths.
+
 ## [0.1.4] - 2026-04-21
 
 ### Added
