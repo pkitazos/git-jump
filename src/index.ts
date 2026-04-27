@@ -94,7 +94,7 @@ function buildUpdateMessage(
   // const updateCommand = isHomebrew
   //   ? "brew upgrade git-jump"
   //   : "npm install -g git-jump";
-  const updateCommand = "npm install -g git-jump";
+  const updateCommand = "npm install -g @pkitazos/git-jump";
 
   const existingContent =
     currentMessage.kind === "info" ? currentMessage.content : [];

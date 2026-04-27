@@ -216,6 +216,13 @@ export function fetchRemoteBranches(): Result<string[]> {
       const slashIndex = trimmed.indexOf("/");
       if (slashIndex === -1) return "";
       return trimmed.slice(slashIndex + 1);
+      // trim the starting bit which preceeds a `/` character
+      // ah shit
+      // `/` is a valid character in branch names...
+      // we need a better way to trim the remote prefixes
+      // maybe we need to first run
+      // `git remote` and use that list of strings
+      // and strip those from the front
     })
     .filter((x) => x !== "");
 
