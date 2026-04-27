@@ -12,6 +12,7 @@ import {
   sequence,
   Worktree,
 } from "./types";
+import { samePath } from "./utils";
 
 export type GitCommandResult = {
   status: number;
@@ -41,22 +42,28 @@ export function locateGitRepoDirs(folder: string): Result<{
       encoding: "utf-8",
     });
 
-    // stdout should be one line pointing to where the git folder is + some extra bits
+    // stdout should be one line pointing to where the git folder is + some extra bits.
+    // git emits forward slashes on every platform, but accept either separator to be safe.
     const gitDir = stdout.trim();
+    const mainWorktreeDir = gitDir.replace(
+      /[\\/]\.git[\\/]worktrees[\\/][^\\/]+[\\/]?$/,
+      "",
+    );
 
     return ok({
-      activeWorktreeDir: folder,
-      mainWorktreeDir: gitDir.replace(/\/.git\/worktrees\/[^/]+\/?$/, ""),
+      activeWorktreeDir: fsPath.resolve(folder),
+      mainWorktreeDir: fsPath.resolve(mainWorktreeDir),
     });
   }
 
   if (found)
     return ok({
-      activeWorktreeDir: folder,
-      mainWorktreeDir: folder,
+      activeWorktreeDir: fsPath.resolve(folder),
+      mainWorktreeDir: fsPath.resolve(folder),
     });
 
-  if (folder === "/") {
+  // dirname of a filesystem root returns the root itself — works on both posix ("/") and windows ("C:\")
+  if (fsPath.dirname(folder) === folder) {
     return err(
       new InputError(
         `You're not in a Git repo.`,
@@ -121,7 +128,9 @@ export function listWorktrees(): Result<Worktree[]> {
         };
 
     return ok({
-      dir: fields.worktree as string,
+      // git emits forward-slash paths on every platform; resolve to native separators
+      // so equality checks against process.cwd()-derived paths work on Windows
+      dir: fsPath.resolve(fields.worktree as string),
       HEAD: currHead,
     });
   });
@@ -136,7 +145,7 @@ export function enrichBranches(
 ): DisplayBranchData[] {
   return branches.map((b) => {
     const linkedRepoDir = worktrees.find(
-      (w) => w.dir !== activeDir && w.HEAD.branchName === b.name,
+      (w) => !samePath(w.dir, activeDir) && w.HEAD.branchName === b.name,
     )?.dir;
 
     return {

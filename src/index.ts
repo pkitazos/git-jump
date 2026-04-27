@@ -42,7 +42,7 @@ import {
   Worktree,
 } from "./types";
 import { bold, clear, green, renderView, yellow } from "./ui";
-import { match } from "./utils";
+import { match, samePath } from "./utils";
 
 let latestPackageVersion: Promise<string | null> | null = null;
 
@@ -186,7 +186,7 @@ function initialize(): Result<InitData> {
     activeWorktreeDir,
   );
 
-  const currentHEAD = worktrees.find((w) => w.dir === activeWorktreeDir)!.HEAD;
+  const currentHEAD = worktrees.find((w) => samePath(w.dir, activeWorktreeDir))!.HEAD;
 
   const list = generateList(branches, currentHEAD, "");
 

@@ -23,6 +23,7 @@ import {
   Scene,
 } from "./types";
 import { bold, formatHelpText, red } from "./ui";
+import { samePath } from "./utils";
 
 export function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
@@ -229,7 +230,7 @@ export function jumpTo(
   args: string[],
 ): CommandResultMessage {
   const target = args[0];
-  const curr = worktrees.find((w) => w.dir === activeWorktreeDir)!;
+  const curr = worktrees.find((w) => samePath(w.dir, activeWorktreeDir))!;
 
   if (
     args.length === 1 &&

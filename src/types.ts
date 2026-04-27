@@ -1,3 +1,5 @@
+import { samePath } from "./utils";
+
 export type AppConfig = {
   mainWorktreeDir: string; // used to read jump data
   activeWorktreeDir: string; // used to read currentHEAD
@@ -97,7 +99,9 @@ export type CurrentHEAD =
   | { detached: false; sha: null; branchName: string };
 
 export function getCurrentHEAD(state: AppState): CurrentHEAD {
-  const curr = state.worktrees.find((w) => w.dir === state.activeWorktreeDir);
+  const curr = state.worktrees.find((w) =>
+    samePath(w.dir, state.activeWorktreeDir),
+  );
   if (!curr) throw new Error("Cannot find active directory HEAD");
   return curr.HEAD;
 }

@@ -1,3 +1,5 @@
+import * as fsPath from "path";
+
 /**
  * Restricts a number to be within a specified range.
  *
@@ -9,6 +11,19 @@
  */
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+/**
+ * Compares two filesystem paths for equality across platforms.
+ * Resolves both sides so forward/backslash mixes are reconciled, and
+ * compares case-insensitively on Windows where paths are case-insensitive.
+ */
+export function samePath(a: string, b: string): boolean {
+  const aN = fsPath.resolve(a);
+  const bN = fsPath.resolve(b);
+  return process.platform === "win32"
+    ? aN.toLowerCase() === bN.toLowerCase()
+    : aN === bN;
 }
 
 /**
